@@ -215,8 +215,14 @@ let confidenceChartInstance = null;
 let overlayOpen = false;
 
 const TYPE_COLORS = {
-  news: '#58a6ff', paper: '#3fb950', book: '#d29922', essay: '#bc8cff',
-  tweet: '#56d4dd', interview: '#f85149', research: '#da8fff', projection: '#d29922'
+  news: '#58a6ff', paper: '#3fb950', book: '#f0b429', essay: '#bc8cff',
+  tweet: '#5ce0e6', interview: '#f85a5a', research: '#da8fff', projection: '#f0b429'
+};
+
+const TYPE_GLOWS = {
+  news: 'rgba(88,166,255,0.5)', paper: 'rgba(63,185,80,0.5)', book: 'rgba(240,180,41,0.5)',
+  essay: 'rgba(188,140,255,0.5)', tweet: 'rgba(92,224,230,0.5)', interview: 'rgba(248,90,90,0.5)',
+  research: 'rgba(218,143,255,0.5)', projection: 'rgba(240,180,41,0.5)'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -323,34 +329,53 @@ function renderGraph() {
   const height = container.parentElement.clientHeight;
   container.style.height = height + 'px';
 
-  nodes = new vis.DataSet(graphData.nodes.map(n => ({
+  const glows = graphData.nodes.map(n => ({
     id: n.id,
     label: n.label,
     title: `${n.title}\nType: ${n.type}\nSentiment: ${n.sentiment}\nConfidence: ${n.confidence}`,
-    color: { background: TYPE_COLORS[n.type] || '#666', border: '#fff', highlight: { background: '#fff', border: TYPE_COLORS[n.type] || '#666' } },
+    color: {
+      background: TYPE_COLORS[n.type] || '#666',
+      border: TYPE_COLORS[n.type] || '#666',
+      highlight: { background: '#fff', border: '#fff' },
+      hover: { background: TYPE_COLORS[n.type] || '#666', border: '#fff' },
+    },
     shape: 'dot',
-    size: 8 + Math.abs(n.sentiment) * 12 + n.confidence * 8,
-    borderWidth: 1, borderWidthSelected: 2,
-    font: { color: '#f0f6fc', size: 10, strokeWidth: 0 },
+    size: 12 + Math.abs(n.sentiment) * 14 + n.confidence * 10,
+    borderWidth: 2,
+    borderWidthSelected: 3,
+    shadow: {
+      enabled: true,
+      color: TYPE_GLOWS[n.type] || 'rgba(255,255,255,0.2)',
+      size: 16,
+      x: 0,
+      y: 0,
+    },
+    font: { color: '#ffffff', size: 11, strokeWidth: 1, strokeColor: '#0d1117' },
     group: n.type,
-  })));
+  }));
+
+  nodes = new vis.DataSet(glows);
 
   edges = new vis.DataSet(graphData.edges.map(e => ({
     from: e.from, to: e.to, label: e.label, title: e.title,
-    color: { color: '#30363d', highlight: '#58a6ff', hover: '#58a6ff' },
-    font: { size: 9, color: '#8b949e', strokeWidth: 0 },
-    width: 1, smooth: { type: 'continuous' },
-    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    color: { color: '#58a6ff66', highlight: '#58a6ff', hover: '#58a6ff' },
+    font: { size: 9, color: '#b0b8c4', strokeWidth: 0 },
+    width: 2,
+    smooth: { type: 'continuous' },
+    arrows: { to: { enabled: true, scaleFactor: 0.6 } },
   })));
 
   network = new vis.Network(container, { nodes, edges }, {
-    nodes: { scaling: { min: 6, max: 30 } },
+    nodes: { scaling: { min: 8, max: 40 } },
     edges: { smooth: { type: 'continuous' } },
     physics: { enabled: true, solver: 'forceAtlas2Based',
       forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.005, springLength: 180, springConstant: 0.02, damping: 0.4 },
       stabilization: { iterations: 100 } },
     interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: true },
-    groups: Object.fromEntries(Object.entries(TYPE_COLORS).map(([k, v]) => [k, { color: { background: v, border: '#fff' } }])),
+    groups: Object.fromEntries(Object.entries(TYPE_COLORS).map(([k, v]) => [k, {
+      color: { background: v, border: v, highlight: { background: '#fff', border: '#fff' } },
+      shadow: { enabled: true, color: TYPE_GLOWS[k] || 'rgba(255,255,255,0.2)', size: 16, x: 0, y: 0 },
+    }])),
   });
 
   network.on('click', params => {
