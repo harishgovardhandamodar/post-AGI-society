@@ -1,6 +1,8 @@
 import os
+import re
 import atexit
 import threading
+from collections import defaultdict
 from datetime import datetime, timezone, datetime as dt
 from typing import Optional
 
@@ -302,14 +304,31 @@ def get_stats(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/api/plausibility")
-def get_plausibility(db: Session = Depends(get_db)):
-    artifacts = db.query(Artifact).all()
-    all_sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
-    all_projections = db.query(Projection).all()
+TIMEFRAME_RE = re.compile(r"(\d{4})(?:\s*[-–]\s*(\d{4}))?")
 
+
+def parse_timeframe(tf: Optional[str]) -> Optional[tuple]:
+    if not tf:
+        return None
+    m = TIMEFRAME_RE.search(tf)
+    if m:
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else start
+        return (start, end)
+    return None
+
+
+def _compute_plausibility(projections_list, sentiments_dict, artifacts_list, year_from=None, year_to=None):
     type_data = {}
-    for p in all_projections:
+    for p in projections_list:
+        tf_range = parse_timeframe(p.timeframe)
+        if year_from is not None or year_to is not None:
+            if tf_range is None:
+                continue
+        if year_from is not None and tf_range[1] < year_from:
+            continue
+        if year_to is not None and tf_range[0] > year_to:
+            continue
         t = p.projection_type
         if t not in type_data:
             type_data[t] = {"confs": [], "sents": [], "artifacts": set(), "summaries": []}
@@ -318,7 +337,7 @@ def get_plausibility(db: Session = Depends(get_db)):
         if p.summary:
             type_data[t]["summaries"].append(p.summary)
 
-    for aid, s in all_sentiments.items():
+    for aid, s in sentiments_dict.items():
         for t, d in type_data.items():
             if aid in d["artifacts"]:
                 d["sents"].append(s.score)
@@ -328,11 +347,7 @@ def get_plausibility(db: Session = Depends(get_db)):
         avg_conf = sum(d["confs"]) / len(d["confs"]) if d["confs"] else 0
         avg_sent = sum(d["sents"]) / len(d["sents"]) if d["sents"] else 0
         plausibility = avg_conf * 0.6 + max(0, avg_sent) * 0.4
-        artifact_titles = [
-            a.title
-            for a in artifacts
-            if a.id in d["artifacts"]
-        ]
+        artifact_titles = [a.title for a in artifacts_list if a.id in d["artifacts"]]
         results[ptype] = {
             "count": len(d["confs"]),
             "avg_confidence": round(avg_conf, 3),
@@ -342,19 +357,91 @@ def get_plausibility(db: Session = Depends(get_db)):
             "summaries": d["summaries"][:6],
         }
 
-    overall_conf = sum(p.confidence for p in all_projections) / len(all_projections) if all_projections else 0
+    return results
+
+
+@app.get("/api/plausibility")
+def get_plausibility(
+    year_from: Optional[int] = Query(None),
+    year_to: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    artifacts = db.query(Artifact).all()
+    all_sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
+    all_projections = db.query(Projection).all()
+
+    results = _compute_plausibility(all_projections, all_sentiments, artifacts, year_from, year_to)
+
+    filtered_projections = all_projections
+    if year_from is not None or year_to is not None:
+        filtered_projections = [p for p in all_projections if _projection_in_year_range(p, year_from, year_to)]
+
+    overall_conf = sum(p.confidence for p in filtered_projections) / len(filtered_projections) if filtered_projections else 0
     overall_sent = sum(s.score for s in all_sentiments.values()) / len(all_sentiments) if all_sentiments else 0
     overall_plaus = overall_conf * 0.6 + max(0, overall_sent) * 0.4
 
     return {
         "types": results,
         "overall": {
-            "total_projections": len(all_projections),
+            "total_projections": len(filtered_projections),
             "avg_confidence": round(overall_conf, 3),
             "avg_sentiment": round(overall_sent, 3),
             "plausibility": round(min(1, max(0, overall_plaus)), 3),
         },
+        "year_range": {"from": year_from, "to": year_to},
     }
+
+
+def _projection_in_year_range(p, year_from, year_to):
+    tf_range = parse_timeframe(p.timeframe)
+    if tf_range is None:
+        return False
+    if year_from is not None and tf_range[1] < year_from:
+        return False
+    if year_to is not None and tf_range[0] > year_to:
+        return False
+    return True
+
+
+@app.get("/api/plausibility/trend")
+def plausibility_trend(
+    year_start: int = Query(2020),
+    year_end: int = Query(2100),
+    step: int = Query(5),
+    db: Session = Depends(get_db),
+):
+    artifacts = db.query(Artifact).all()
+    all_sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
+    all_projections = db.query(Projection).all()
+    all_types = sorted(set(p.projection_type for p in all_projections))
+
+    years = list(range(year_start, year_end + 1, step))
+    if years[-1] != year_end:
+        years.append(year_end)
+
+    # For each year, find projections whose timeframe covers that year
+    type_series = {t: [] for t in all_types}
+    for yr in years:
+        yr_results = _compute_plausibility(
+            [p for p in all_projections if _projection_covers_year(p, yr)],
+            all_sentiments,
+            artifacts,
+        )
+        for t in all_types:
+            val = yr_results.get(t, {}).get("plausibility", 0)
+            type_series[t].append(val)
+
+    return {
+        "years": years,
+        "series": type_series,
+    }
+
+
+def _projection_covers_year(p, year):
+    tf_range = parse_timeframe(p.timeframe)
+    if tf_range is None:
+        return False
+    return tf_range[0] <= year <= tf_range[1]
 
 
 @app.post("/api/relationships")
