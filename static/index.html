@@ -300,7 +300,10 @@ function initTabs() {
 }
 
 async function loadData() {
-  await Promise.all([loadArtifacts(), loadStats(), loadGraph()]);
+  await Promise.all([loadArtifacts(), loadGraph()]);
+  const statsData = await loadStats();
+  renderSentimentChart(statsData);
+  renderConfidenceChart(statsData);
   buildTypeFilters();
   filterArtifacts();
 }
@@ -319,8 +322,7 @@ async function loadStats() {
   document.getElementById('statTotal').textContent = data.total_artifacts;
   document.getElementById('statSentiment').textContent = data.avg_sentiment.toFixed(2);
   document.getElementById('statConfidence').textContent = data.projections.avg_confidence.toFixed(2);
-  renderSentimentChart(data);
-  renderConfidenceChart(data);
+  return data;
 }
 
 async function loadGraph() {
