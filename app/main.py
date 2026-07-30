@@ -287,9 +287,11 @@ def get_plausibility(db: Session = Depends(get_db)):
     for p in all_projections:
         t = p.projection_type
         if t not in type_data:
-            type_data[t] = {"confs": [], "sents": [], "artifacts": set()}
+            type_data[t] = {"confs": [], "sents": [], "artifacts": set(), "summaries": []}
         type_data[t]["confs"].append(p.confidence)
         type_data[t]["artifacts"].add(p.artifact_id)
+        if p.summary:
+            type_data[t]["summaries"].append(p.summary)
 
     for aid, s in all_sentiments.items():
         for t, d in type_data.items():
@@ -312,6 +314,7 @@ def get_plausibility(db: Session = Depends(get_db)):
             "avg_sentiment": round(avg_sent, 3),
             "plausibility": round(min(1, max(0, plausibility)), 3),
             "artifacts": artifact_titles[:15],
+            "summaries": d["summaries"][:6],
         }
 
     overall_conf = sum(p.confidence for p in all_projections) / len(all_projections) if all_projections else 0

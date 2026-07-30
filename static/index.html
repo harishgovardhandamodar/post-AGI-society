@@ -829,6 +829,13 @@ const PROJ_ICONS = {
   utopian: 'fa-rocket', dystopian: 'fa-skull', cautionary: 'fa-exclamation-triangle',
   accelerationist: 'fa-bolt', neutral: 'fa-balance-scale'
 };
+const PROJ_DEFS = {
+  utopian: 'AGI creates unprecedented abundance, radical life extension, and universal flourishing.',
+  dystopian: 'AGI leads to human extinction, permanent disempowerment, or irreversible catastrophe.',
+  cautionary: 'AGI poses serious existential risks that require urgent safety measures to manage.',
+  accelerationist: 'Rapid AGI development is inevitable; the focus should be on steering rather than slowing.',
+  neutral: 'Outcome depends on choices made today; multiple scenarios remain plausible.'
+};
 
 function switchMainView(view) {
   document.querySelectorAll('.main-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
@@ -896,16 +903,18 @@ function renderPlausibility(data) {
             <div class="num" style="color:${color}" id="num-${ptype}">0%</div>
           </div>
           <div class="plaus-body">
-            <div class="plaus-header" style="margin-bottom:8px;">
+            <div class="plaus-header" style="margin-bottom:4px;">
               <div class="plaus-title" style="color:${color}"><i class="fas ${icon}"></i>${ptype}</div>
               <span class="plaus-badge" style="background:${color}22;color:${color};">${p.count}</span>
             </div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.4;">${PROJ_DEFS[ptype] || ''}</div>
             <div class="plaus-stat"><span>Confidence</span><span id="conf-${ptype}">0%</span></div>
             <div class="plaus-gauge-wrap"><div class="plaus-gauge-fill" style="background:${color}" id="gauge-${ptype}"></div></div>
             <div class="plaus-meta-row">
               <div class="plaus-meta-item">Sentiment <strong id="sent-${ptype}">0.00</strong></div>
               <div class="plaus-meta-item">Plausibility <strong id="plaus-${ptype}">0%</strong></div>
             </div>
+            ${p.summaries && p.summaries.length > 0 ? `<div class="plaus-artifacts" style="margin-bottom:6px;"><strong style="color:var(--text);font-weight:600;">Summaries</strong><br/><span style="font-size:11px;line-height:1.5;color:var(--text2);">${p.summaries.slice(0, 3).map(s => '▸ ' + s).join('<br/>')}</span></div>` : ''}
             ${artifacts.length > 0 ? `<div class="plaus-artifacts"><span class="dot" style="background:${color}"></span>${artifacts.slice(0, 8).join(' · ')}${artifacts.length > 8 ? ' · +' + (artifacts.length - 8) + ' more' : ''}</div>` : ''}
           </div>
         </div>
