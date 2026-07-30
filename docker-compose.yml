@@ -1,0 +1,12 @@
+services:
+  dashboard:
+    build: .
+    container_name: post-agi-dashboard
+    ports:
+      - "8200:8200"
+    volumes:
+      - ags_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ags_data:

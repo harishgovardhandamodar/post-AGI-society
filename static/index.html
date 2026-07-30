@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Post-AGI Society Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/standalone/umd/vis-network.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+<style>
+:root {
+  --bg: #0d1117;
+  --bg2: #161b22;
+  --bg3: #21262d;
+  --border: #30363d;
+  --text: #f0f6fc;
+  --text2: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --purple: #bc8cff;
+  --teal: #56d4dd;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+.layout { display: grid; grid-template-columns: 320px 1fr 320px; grid-template-rows: auto 1fr; min-height: 100vh; gap: 0; }
+.header { grid-column: 1 / -1; padding: 16px 24px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.header h1 i { color: var(--purple); }
+.header-right { display: flex; gap: 16px; align-items: center; }
+.search-box { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--text); width: 240px; font-size: 13px; }
+.search-box:focus { outline: none; border-color: var(--accent); }
+.stats-bar { display: flex; gap: 12px; font-size: 13px; color: var(--text2); }
+.stats-bar span { display: flex; align-items: center; gap: 4px; }
+.stats-bar .num { color: var(--text); font-weight: 600; }
+.sidebar-left, .sidebar-right { background: var(--bg2); border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; }
+.sidebar-right { border-right: none; border-left: 1px solid var(--border); }
+.main { overflow: hidden; position: relative; background: var(--bg); }
+.panel { margin-bottom: 20px; }
+.panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; font-weight: 600; }
+.filter-btn { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text2); margin: 2px; transition: all 0.15s; }
+.filter-btn:hover { border-color: var(--accent); color: var(--text); }
+.filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.artifact-list { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
+.artifact-item { padding: 8px 10px; background: var(--bg3); border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; font-size: 12px; }
+.artifact-item:hover { border-color: var(--accent); }
+.artifact-item .title { font-weight: 500; margin-bottom: 2px; }
+.artifact-item .meta { font-size: 11px; color: var(--text2); display: flex; gap: 8px; }
+.artifact-item .type-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; }
+.chart-container { height: 140px; margin-bottom: 8px; }
+.graph-controls { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; flex-direction: column; gap: 4px; }
+.graph-controls button { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); cursor: pointer; font-size: 13px; }
+.graph-controls button:hover { background: var(--bg3); }
+.graph-tooltip { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; z-index: 10; display: none; max-width: 400px; font-size: 13px; }
+.graph-tooltip.visible { display: block; }
+.form-group { margin-bottom: 10px; }
+.form-group label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
+.form-group textarea { resize: vertical; min-height: 50px; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
+.btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 500; }
+.btn-primary { background: var(--accent); color: var(--bg); }
+.btn-primary:hover { opacity: 0.9; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.tabs { display: flex; gap: 2px; margin-bottom: 12px; background: var(--bg3); border-radius: 6px; padding: 2px; }
+.tab { flex: 1; text-align: center; padding: 6px; font-size: 11px; cursor: pointer; border-radius: 4px; color: var(--text2); }
+.tab.active { background: var(--bg2); color: var(--text); }
+.type-news { color: var(--accent); }
+.type-paper { color: var(--green); }
+.type-book { color: var(--orange); }
+.type-essay { color: var(--purple); }
+.type-tweet { color: var(--teal); }
+.type-interview { color: var(--red); }
+.type-research { color: var(--purple); }
+.type-projection { color: var(--orange); }
+.badge-news { background: #1f3a5f; color: var(--accent); }
+.badge-paper { background: #1a3d2a; color: var(--green); }
+.badge-book { background: #3d2e1a; color: var(--orange); }
+.badge-essay { background: #2d1f3d; color: var(--purple); }
+.badge-tweet { background: #1a3d3d; color: var(--teal); }
+.badge-interview { background: #3d1a1a; color: var(--red); }
+.badge-research { background: #2d1f3d; color: var(--purple); }
+.badge-projection { background: #3d2e1a; color: var(--orange); }
+.notif { position: fixed; bottom: 20px; right: 20px; padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 1000; display: none; }
+.notif.success { display: block; background: #1a3d2a; border: 1px solid var(--green); color: var(--green); }
+.notif.error { display: block; background: #3d1a1a; border: 1px solid var(--red); color: var(--red); }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
+.empty-state i { font-size: 32px; margin-bottom: 12px; color: var(--border); }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; background: var(--bg3); color: var(--text2); margin: 1px; }
+.legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text2); margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-color { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="header">
+    <h1><i class="fas fa-brain"></i> Post-AGI Society</h1>
+    <div class="header-right">
+      <div class="stats-bar" id="statsBar">
+        <span><i class="fas fa-database"></i> Artifacts: <span class="num" id="statTotal">0</span></span>
+        <span><i class="fas fa-chart-line"></i> Sentiment: <span class="num" id="statSentiment">0</span></span>
+        <span><i class="fas fa-bullseye"></i> Confidence: <span class="num" id="statConfidence">0</span></span>
+      </div>
+      <input class="search-box" id="searchInput" placeholder="Search artifacts..." />
+    </div>
+  </div>
+
+  <div class="sidebar-left">
+    <div class="panel">
+      <h3><i class="fas fa-filter"></i> Filters</h3>
+      <div id="typeFilters"></div>
+    </div>
+
+    <div class="panel">
+      <h3><i class="fas fa-chart-pie"></i> Sentiment Distribution</h3>
+      <div class="chart-container"><canvas id="sentimentChart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h3><i class="fas fa-bullseye"></i> Projection Confidence</h3>
+      <div class="chart-container"><canvas id="confidenceChart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h3><i class="fas fa-list"></i> Artifacts</h3>
+      <div id="artifactList" class="artifact-list"></div>
+    </div>
+  </div>
+
+  <div class="main" id="graphContainer">
+    <div class="graph-controls">
+      <button onclick="zoomIn()" title="Zoom in"><i class="fas fa-plus"></i></button>
+      <button onclick="zoomOut()" title="Zoom out"><i class="fas fa-minus"></i></button>
+      <button onclick="fitGraph()" title="Fit view"><i class="fas fa-expand"></i></button>
+      <button onclick="togglePhysics()" title="Toggle physics"><i class="fas fa-arrows-alt"></i></button>
+    </div>
+    <div id="graph"></div>
+    <div class="graph-tooltip" id="graphTooltip"></div>
+  </div>
+
+  <div class="sidebar-right">
+    <div class="tabs" id="ingestTabs">
+      <div class="tab active" data-tab="ingest">Add</div>
+      <div class="tab" data-tab="relate">Relate</div>
+    </div>
+
+    <div id="ingestPanel">
+      <div class="panel">
+        <h3><i class="fas fa-plus-circle"></i> New Artifact</h3>
+        <div class="form-group">
+          <label>Title</label>
+          <input id="fTitle" placeholder="e.g. Yann LeCun on AGI timelines" />
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="fType">
+            <option value="news">News</option>
+            <option value="paper">Paper</option>
+            <option value="book">Book</option>
+            <option value="essay">Essay</option>
+            <option value="tweet">Tweet</option>
+            <option value="interview">Interview</option>
+            <option value="research">Research</option>
+            <option value="projection">Projection</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Author / Source</label>
+          <input id="fAuthor" placeholder="e.g. Yann LeCun" />
+        </div>
+        <div class="form-group">
+          <label>URL</label>
+          <input id="fUrl" placeholder="https://..." />
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="fDesc" placeholder="Brief summary..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Tags (comma-separated)</label>
+          <input id="fTags" placeholder="timelines,optimism" />
+        </div>
+
+        <details style="margin: 10px 0;">
+          <summary style="font-size: 11px; color: var(--text2); cursor: pointer;">+ Sentiment & Projection</summary>
+          <div class="form-group" style="margin-top: 8px;">
+            <label>Sentiment Score (-1 to 1)</label>
+            <input id="fSentiment" type="number" step="0.1" min="-1" max="1" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label>Projection Type</label>
+            <select id="fProjType">
+              <option value="">None</option>
+              <option value="utopian">Utopian</option>
+              <option value="dystopian">Dystopian</option>
+              <option value="cautionary">Cautionary</option>
+              <option value="accelerationist">Accelerationist</option>
+              <option value="neutral">Neutral</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Confidence (0-1)</label>
+            <input id="fConfidence" type="number" step="0.05" min="0" max="1" placeholder="0.5" />
+          </div>
+          <div class="form-group">
+            <label>Timeframe</label>
+            <input id="fTimeframe" placeholder="e.g. 2030-2035" />
+          </div>
+        </details>
+
+        <button class="btn btn-primary" onclick="ingestArtifact()" style="width:100%;">
+          <i class="fas fa-cloud-upload-alt"></i> Ingest
+        </button>
+      </div>
+    </div>
+
+    <div id="relatePanel" style="display:none;">
+      <div class="panel">
+        <h3><i class="fas fa-link"></i> Create Relationship</h3>
+        <div class="form-group">
+          <label>Source Artifact</label>
+          <select id="relSource"></select>
+        </div>
+        <div class="form-group">
+          <label>Relationship</label>
+          <select id="relType">
+            <option value="references">References</option>
+            <option value="supports">Supports</option>
+            <option value="contradicts">Contradicts</option>
+            <option value="builds_upon">Builds Upon</option>
+            <option value="responds_to">Responds To</option>
+            <option value="similar_to">Similar To</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Target Artifact</label>
+          <select id="relTarget"></select>
+        </div>
+        <div class="form-group">
+          <label>Description (optional)</label>
+          <input id="relDesc" placeholder="Context..." />
+        </div>
+        <button class="btn btn-primary" onclick="createRelationship()" style="width:100%;">
+          <i class="fas fa-link"></i> Relate
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notif" id="notif"></div>
+
+<script>
+const API = '/api';
+let network = null;
+let nodes = null;
+let edges = null;
+let allArtifacts = [];
+let graphData = null;
+let physicsEnabled = true;
+let sentimentChartInstance = null;
+let confidenceChartInstance = null;
+
+const TYPE_COLORS = {
+  news: '#58a6ff', paper: '#3fb950', book: '#d29922', essay: '#bc8cff',
+  tweet: '#56d4dd', interview: '#f85149', research: '#bc8cff', projection: '#d29922'
+};
+
+const TYPE_ICONS = {
+  news: 'newspaper', paper: 'file-alt', book: 'book', essay: 'feather-alt',
+  tweet: 'twitter', interview: 'microphone', research: 'flask', projection: 'chart-line'
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  initTabs();
+  loadData();
+  document.getElementById('searchInput').addEventListener('input', debounce(filterArtifacts, 300));
+});
+
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+function initTabs() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('ingestPanel').style.display = tab.dataset.tab === 'ingest' ? 'block' : 'none';
+      document.getElementById('relatePanel').style.display = tab.dataset.tab === 'relate' ? 'block' : 'none';
+    });
+  });
+}
+
+async function loadData() {
+  await Promise.all([loadArtifacts(), loadStats(), loadGraph()]);
+  buildTypeFilters();
+  filterArtifacts();
+}
+
+async function loadArtifacts() {
+  const res = await fetch(`${API}/artifacts?limit=500`);
+  const data = await res.json();
+  allArtifacts = data.items;
+  renderArtifactList(allArtifacts);
+  populateRelateSelects();
+}
+
+async function loadStats() {
+  const res = await fetch(`${API}/stats`);
+  const data = await res.json();
+  document.getElementById('statTotal').textContent = data.total_artifacts;
+  document.getElementById('statSentiment').textContent = data.avg_sentiment.toFixed(2);
+  document.getElementById('statConfidence').textContent = data.projections.avg_confidence.toFixed(2);
+  renderSentimentChart(data);
+  renderConfidenceChart(data);
+}
+
+async function loadGraph() {
+  const res = await fetch(`${API}/graph`);
+  graphData = await res.json();
+  renderGraph();
+}
+
+function buildTypeFilters() {
+  const types = [...new Set(allArtifacts.map(a => a.artifact_type))];
+  const container = document.getElementById('typeFilters');
+  container.innerHTML = `<button class="filter-btn active" data-type="all">All</button>` +
+    types.map(t => `<button class="filter-btn" data-type="${t}">${t}</button>`).join('');
+  container.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterArtifacts();
+    });
+  });
+}
+
+function filterArtifacts() {
+  const activeType = document.querySelector('#typeFilters .filter-btn.active')?.dataset.type;
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  let filtered = allArtifacts;
+  if (activeType && activeType !== 'all') filtered = filtered.filter(a => a.artifact_type === activeType);
+  if (q) filtered = filtered.filter(a =>
+    a.title.toLowerCase().includes(q) ||
+    (a.author && a.author.toLowerCase().includes(q)) ||
+    (a.description && a.description.toLowerCase().includes(q)) ||
+    (a.tags && a.tags.toLowerCase().includes(q))
+  );
+  renderArtifactList(filtered);
+  filterGraph(activeType === 'all' ? null : activeType, q);
+}
+
+function renderArtifactList(items) {
+  const container = document.getElementById('artifactList');
+  if (items.length === 0) {
+    container.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><br/>No artifacts found</div>';
+    return;
+  }
+  container.innerHTML = items.map(a => {
+    const badge = a.artifact_type;
+    return `<div class="artifact-item" onclick="focusNode(${a.id})">
+      <div class="title"><span class="type-badge badge-${badge}">${badge}</span> ${a.title}</div>
+      <div class="meta">
+        <span>${a.author || 'Unknown'}</span>
+        ${a.date_published ? `<span>${new Date(a.date_published).toLocaleDateString()}</span>` : ''}
+        ${a.tags ? `<span>${a.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('')}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderGraph() {
+  const container = document.getElementById('graph');
+  const height = container.parentElement.clientHeight;
+  container.style.height = height + 'px';
+
+  nodes = new vis.DataSet(graphData.nodes.map(n => ({
+    id: n.id,
+    label: n.label,
+    title: `<b>${n.title}</b><br/>Type: ${n.type}<br/>Sentiment: ${n.sentiment}<br/>Confidence: ${n.confidence}`,
+    color: { background: TYPE_COLORS[n.type] || '#666', border: '#fff', highlight: { background: '#fff', border: TYPE_COLORS[n.type] || '#666' } },
+    shape: 'dot',
+    size: 8 + Math.abs(n.sentiment) * 12 + n.confidence * 8,
+    borderWidth: 1,
+    borderWidthSelected: 2,
+    font: { color: '#f0f6fc', size: 10, strokeWidth: 0 },
+    group: n.type,
+  })));
+
+  edges = new vis.DataSet(graphData.edges.map(e => ({
+    from: e.from,
+    to: e.to,
+    label: e.label,
+    title: e.title,
+    color: { color: '#30363d', highlight: '#58a6ff', hover: '#58a6ff' },
+    font: { size: 9, color: '#8b949e', strokeWidth: 0 },
+    width: 1,
+    smooth: { type: 'continuous' },
+    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+  })));
+
+  const options = {
+    nodes: { scaling: { min: 6, max: 30 } },
+    edges: { smooth: { type: 'continuous' } },
+    physics: {
+      enabled: true,
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.005, springLength: 180, springConstant: 0.02, damping: 0.4 },
+      stabilization: { iterations: 100 },
+    },
+    interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: true },
+    groups: Object.fromEntries(Object.entries(TYPE_COLORS).map(([k, v]) => [k, { color: { background: v, border: '#fff' } }])),
+  };
+
+  network = new vis.Network(container, { nodes, edges }, options);
+
+  network.on('click', params => {
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const nodeData = graphData.nodes.find(n => n.id === nodeId);
+      if (nodeData) showTooltip(nodeData);
+    } else {
+      hideTooltip();
+    }
+  });
+
+  network.on('doubleClick', params => {
+    if (params.nodes.length > 0) {
+      focusNode(params.nodes[0]);
+    }
+  });
+}
+
+function showTooltip(node) {
+  const tooltip = document.getElementById('graphTooltip');
+  const tags = node.tags ? node.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('') : '';
+  tooltip.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:start;gap:12px;">
+      <div><b>${node.title}</b></div>
+      <span class="type-badge badge-${node.type}">${node.type}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-top:4px;">
+      ${node.author ? `${node.author} · ` : ''}${node.date ? new Date(node.date).toLocaleDateString() : ''}
+    </div>
+    <div style="margin-top:6px;display:flex;gap:12px;font-size:11px;">
+      <span>Sentiment: <span style="color:${node.sentiment > 0 ? 'var(--green)' : node.sentiment < 0 ? 'var(--red)' : 'var(--text2)'}">${node.sentiment}</span></span>
+      <span>Confidence: <span style="color:var(--accent)">${node.confidence}</span></span>
+    </div>
+    ${tags ? `<div style="margin-top:4px;">${tags}</div>` : ''}
+  `;
+  tooltip.classList.add('visible');
+}
+
+function hideTooltip() {
+  document.getElementById('graphTooltip').classList.remove('visible');
+}
+
+function focusNode(id) {
+  if (!network) return;
+  network.focus(id, { scale: 1.5, animation: true });
+  const nodeData = graphData?.nodes.find(n => n.id === id);
+  if (nodeData) showTooltip(nodeData);
+  network.selectNodes([id]);
+}
+
+function filterGraph(typeFilter, searchQuery) {
+  if (!network || !graphData) return;
+  const visibleIds = new Set();
+  graphData.nodes.forEach(n => {
+    let show = true;
+    if (typeFilter && n.type !== typeFilter) show = false;
+    if (searchQuery && !n.title.toLowerCase().includes(searchQuery) && !n.author.toLowerCase().includes(searchQuery)) show = false;
+    if (show) visibleIds.add(n.id);
+  });
+  nodes.forEach(n => { nodes.update({ id: n.id, hidden: !visibleIds.has(n.id) }); });
+  edges.forEach(e => {
+    const srcHidden = nodes.get(e.from)?.hidden;
+    const tgtHidden = nodes.get(e.to)?.hidden;
+    edges.update({ id: e.id, hidden: srcHidden || tgtHidden });
+  });
+}
+
+function zoomIn() { network?.zoomIn(0.2); }
+function zoomOut() { network?.zoomOut(0.2); }
+function fitGraph() { network?.fit({ animation: true }); }
+function togglePhysics() {
+  physicsEnabled = !physicsEnabled;
+  network?.setOptions({ physics: { enabled: physicsEnabled } });
+}
+
+function renderSentimentChart(data) {
+  const ctx = document.getElementById('sentimentChart').getContext('2d');
+  if (sentimentChartInstance) sentimentChartInstance.destroy();
+  const labels = ['Very Neg', 'Negative', 'Neutral', 'Positive', 'Very Pos'];
+  const counts = [0, 0, 0, 0, 0];
+  const colors = ['#f85149', '#d29922', '#8b949e', '#3fb950', '#56d4dd'];
+  allArtifacts.forEach(a => {
+    if (a.sentiment !== undefined) {
+      if (a.sentiment <= -0.6) counts[0]++;
+      else if (a.sentiment <= -0.2) counts[1]++;
+      else if (a.sentiment < 0.2) counts[2]++;
+      else if (a.sentiment < 0.6) counts[3]++;
+      else counts[4]++;
+    }
+  });
+  sentimentChartInstance = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } },
+  });
+}
+
+function renderConfidenceChart(data) {
+  const ctx = document.getElementById('confidenceChart').getContext('2d');
+  if (confidenceChartInstance) confidenceChartInstance.destroy();
+  const projData = data.projections.by_type || {};
+  const labels = Object.keys(projData);
+  const vals = Object.values(projData);
+  const colors = { utopian: '#3fb950', dystopian: '#f85149', cautionary: '#d29922', accelerationist: '#bc8cff', neutral: '#8b949e' };
+  confidenceChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: vals, backgroundColor: labels.map(l => colors[l] || '#666'), borderRadius: 3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } },
+  });
+}
+
+async function ingestArtifact() {
+  const title = document.getElementById('fTitle').value.trim();
+  if (!title) { showNotif('Title is required', 'error'); return; }
+  const payload = {
+    title,
+    artifact_type: document.getElementById('fType').value,
+    author: document.getElementById('fAuthor').value.trim() || null,
+    url: document.getElementById('fUrl').value.trim() || null,
+    description: document.getElementById('fDesc').value.trim() || null,
+    tags: document.getElementById('fTags').value.trim() || null,
+    sentiment_score: parseFloat(document.getElementById('fSentiment').value) || null,
+    projection_type: document.getElementById('fProjType').value || null,
+    projection_confidence: parseFloat(document.getElementById('fConfidence').value) || null,
+    projection_timeframe: document.getElementById('fTimeframe').value.trim() || null,
+  };
+  try {
+    const res = await fetch(`${API}/artifacts`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Failed to ingest');
+    showNotif('Artifact ingested successfully', 'success');
+    document.querySelectorAll('#ingestPanel input, #ingestPanel textarea').forEach(el => el.value = '');
+    await loadData();
+  } catch (e) {
+    showNotif('Error ingesting artifact', 'error');
+  }
+}
+
+function populateRelateSelects() {
+  const src = document.getElementById('relSource');
+  const tgt = document.getElementById('relTarget');
+  const opts = allArtifacts.map(a => `<option value="${a.id}">${a.title.substring(0, 60)}</option>`).join('');
+  src.innerHTML = opts;
+  tgt.innerHTML = opts;
+}
+
+async function createRelationship() {
+  const source_id = parseInt(document.getElementById('relSource').value);
+  const target_id = parseInt(document.getElementById('relTarget').value);
+  const relationship_type = document.getElementById('relType').value;
+  const description = document.getElementById('relDesc').value.trim() || null;
+  if (source_id === target_id) { showNotif('Cannot relate an artifact to itself', 'error'); return; }
+  try {
+    const res = await fetch(`${API}/relationships`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_id, target_id, relationship_type, description }),
+    });
+    if (!res.ok) throw new Error('Failed to create relationship');
+    showNotif('Relationship created', 'success');
+    document.getElementById('relDesc').value = '';
+    await loadGraph();
+  } catch (e) {
+    showNotif('Error creating relationship', 'error');
+  }
+}
+
+function showNotif(msg, type) {
+  const el = document.getElementById('notif');
+  el.textContent = msg;
+  el.className = 'notif ' + type;
+  setTimeout(() => { el.className = 'notif'; }, 3000);
+}
+
+window.addEventListener('resize', () => {
+  if (network) {
+    const h = document.querySelector('.main').clientHeight;
+    document.getElementById('graph').style.height = h + 'px';
+    network.fit({ animation: false });
+  }
+});
+</script>
+</body>
+</html>
