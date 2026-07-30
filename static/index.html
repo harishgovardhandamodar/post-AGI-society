@@ -173,6 +173,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <span><i class="fas fa-database"></i> Artifacts: <span class="num" id="statTotal">0</span></span>
         <span><i class="fas fa-chart-line"></i> Sentiment: <span class="num" id="statSentiment">0</span></span>
         <span><i class="fas fa-bullseye"></i> Confidence: <span class="num" id="statConfidence">0</span></span>
+        <span><i class="fas fa-clock"></i> Last fetch: <span class="num" id="statLastFetch">never</span></span>
       </div>
       <input class="search-box" id="searchInput" placeholder="Search artifacts..." />
       <button id="fetchBtn" onclick="fetchFromWeb()" style="background:var(--accent);border:none;border-radius:6px;color:var(--bg);cursor:pointer;padding:6px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="fas fa-cloud-download-alt"></i> <span id="fetchLabel">Fetch</span></button>
@@ -375,12 +376,27 @@ function initTabs() {
 }
 
 async function loadData() {
-  await Promise.all([loadArtifacts(), loadGraph()]);
+  await Promise.all([loadArtifacts(), loadGraph(), loadIngestStatus()]);
   const statsData = await loadStats();
   renderSentimentChart(statsData);
   renderConfidenceChart(statsData);
   buildTypeFilters();
   filterArtifacts();
+}
+
+async function loadIngestStatus() {
+  try {
+    const res = await fetch(`${API}/ingest/status`);
+    const data = await res.json();
+    const el = document.getElementById('statLastFetch');
+    if (data.last_run) {
+      const d = new Date(data.last_run);
+      el.textContent = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      el.title = `Total runs: ${data.total_runs} · Items fetched: ${data.items_fetched}`;
+    } else {
+      el.textContent = 'never';
+    }
+  } catch (e) {}
 }
 
 async function loadArtifacts() {
@@ -979,6 +995,7 @@ async function fetchFromWeb() {
       plausibilityLoaded = false;
     } else {
       showNotif('No new items found (all URLs already collected)', 'success');
+      await loadIngestStatus();
     }
   } catch (e) {
     showNotif('Error fetching from web sources', 'error');
