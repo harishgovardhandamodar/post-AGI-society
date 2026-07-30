@@ -910,13 +910,21 @@ function renderPlausibility(data) {
       <h2>Overall Plausibility</h2>
       <div class="sub"><span id="overallConf">0</span>% avg confidence · <span id="overallSent">0.00</span> avg sentiment · <span id="overallCount">${overall.total_projections}</span> projections</div>
     </div>
-    <div class="plaus-year-filter" id="yearFilter">
-      <label><i class="fas fa-calendar-alt"></i> Year Range</label>
+    <div class="plaus-year-filter">
+      <label><i class="fas fa-clock"></i> Projection Year</label>
       <span class="yr-label">From</span>
-      <input type="number" id="yrFrom" value="${data.year_range?.from || ''}" min="2000" max="2100" placeholder="any" onchange="filterPlausibility()"/>
+      <input type="number" id="yrFrom" value="${data.year_range?.projection?.from || ''}" min="2000" max="2100" placeholder="any" onchange="filterPlausibility()"/>
       <span class="yr-label">To</span>
-      <input type="number" id="yrTo" value="${data.year_range?.to || ''}" min="2000" max="2100" placeholder="any" onchange="filterPlausibility()"/>
+      <input type="number" id="yrTo" value="${data.year_range?.projection?.to || ''}" min="2000" max="2100" placeholder="any" onchange="filterPlausibility()"/>
       <button class="yr-btn" onclick="document.getElementById('yrFrom').value='';document.getElementById('yrTo').value='';filterPlausibility()"><i class="fas fa-undo"></i> Reset</button>
+    </div>
+    <div class="plaus-year-filter">
+      <label><i class="fas fa-calendar-alt"></i> Source Year</label>
+      <span class="yr-label">From</span>
+      <input type="number" id="srcYrFrom" value="${data.year_range?.source?.from || ''}" min="2000" max="2100" placeholder="any" onchange="filterPlausibility()"/>
+      <span class="yr-label">To</span>
+      <input type="number" id="srcYrTo" value="${data.year_range?.source?.to || ''}" min="2000" max="2100" placeholder="any" onchange="filterPlausibility()"/>
+      <button class="yr-btn" onclick="document.getElementById('srcYrFrom').value='';document.getElementById('srcYrTo').value='';filterPlausibility()"><i class="fas fa-undo"></i> Reset</button>
     </div>
     <div class="plaus-grid">`;
 
@@ -959,7 +967,16 @@ function renderPlausibility(data) {
       </div>`;
   }
   html += '</div>';
-  html += `<div class="plaus-trend-wrap"><h3><i class="fas fa-chart-line"></i> Plausibility Trend Over Time</h3><div class="plaus-trend-chart"><canvas id="trendChart"></canvas></div></div>`;
+  html += `<div class="plaus-trend-wrap">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <h3 style="margin:0;"><i class="fas fa-chart-line"></i> Plausibility Trend</h3>
+      <div style="display:flex;gap:4px;">
+        <button class="yr-btn trend-mode-btn ${(currentTrendMode||'projection_year')==='projection_year'?'active':''}" data-mode="projection_year" onclick="switchTrendMode('projection_year')">by Projection Year</button>
+        <button class="yr-btn trend-mode-btn ${(currentTrendMode||'projection_year')==='source_year'?'active':''}" data-mode="source_year" onclick="switchTrendMode('source_year')">by Source Year</button>
+      </div>
+    </div>
+    <div class="plaus-trend-chart"><canvas id="trendChart"></canvas></div>
+  </div>`;
   el.innerHTML = html;
 
   // Animate with staggered delays
@@ -992,14 +1009,19 @@ function renderPlausibility(data) {
 let plausibilityTrendChart = null;
 let currentPlausData = null;
 let trendDataCache = null;
+let currentTrendMode = 'projection_year';
 
 function filterPlausibility() {
   const from = document.getElementById('yrFrom').value;
   const to = document.getElementById('yrTo').value;
+  const srcFrom = document.getElementById('srcYrFrom').value;
+  const srcTo = document.getElementById('srcYrTo').value;
   let url = `${API}/plausibility`;
   const params = [];
   if (from) params.push(`year_from=${parseInt(from)}`);
   if (to) params.push(`year_to=${parseInt(to)}`);
+  if (srcFrom) params.push(`source_year_from=${parseInt(srcFrom)}`);
+  if (srcTo) params.push(`source_year_to=${parseInt(srcTo)}`);
   if (params.length) url += '?' + params.join('&');
   const el = document.getElementById('plausibilityView');
   el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Updating...</div>';
@@ -1011,9 +1033,18 @@ function filterPlausibility() {
   });
 }
 
+function switchTrendMode(mode) {
+  currentTrendMode = mode;
+  document.querySelectorAll('.trend-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  if (trendDataCache) {
+    loadTrendData();
+  }
+}
+
 async function loadTrendData() {
   try {
-    const res = await fetch(`${API}/plausibility/trend?year_start=2020&year_end=2100&step=5`);
+    const mode = currentTrendMode || 'projection_year';
+    const res = await fetch(`${API}/plausibility/trend?year_start=2020&year_end=2100&step=5&mode=${mode}`);
     trendDataCache = await res.json();
     renderTrendChart(trendDataCache);
   } catch (e) {}

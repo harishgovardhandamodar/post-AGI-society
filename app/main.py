@@ -318,9 +318,13 @@ def parse_timeframe(tf: Optional[str]) -> Optional[tuple]:
     return None
 
 
-def _compute_plausibility(projections_list, sentiments_dict, artifacts_list, year_from=None, year_to=None):
+def _compute_plausibility(projections_list, sentiments_dict, artifacts_list,
+                          year_from=None, year_to=None,
+                          source_year_from=None, source_year_to=None):
+    artifacts_map = {a.id: a for a in artifacts_list}
     type_data = {}
     for p in projections_list:
+        # Filter by projection timeframe
         tf_range = parse_timeframe(p.timeframe)
         if year_from is not None or year_to is not None:
             if tf_range is None:
@@ -329,6 +333,18 @@ def _compute_plausibility(projections_list, sentiments_dict, artifacts_list, yea
             continue
         if year_to is not None and tf_range[0] > year_to:
             continue
+
+        # Filter by source artifact publication year
+        if source_year_from is not None or source_year_to is not None:
+            art = artifacts_map.get(p.artifact_id)
+            if art and art.date_published:
+                pub_year = art.date_published.year
+                if source_year_from is not None and pub_year < source_year_from:
+                    continue
+                if source_year_to is not None and pub_year > source_year_to:
+                    continue
+            else:
+                continue  # skip if no date when filtering by source year
         t = p.projection_type
         if t not in type_data:
             type_data[t] = {"confs": [], "sents": [], "artifacts": set(), "summaries": []}
@@ -364,17 +380,23 @@ def _compute_plausibility(projections_list, sentiments_dict, artifacts_list, yea
 def get_plausibility(
     year_from: Optional[int] = Query(None),
     year_to: Optional[int] = Query(None),
+    source_year_from: Optional[int] = Query(None),
+    source_year_to: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
     artifacts = db.query(Artifact).all()
     all_sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
     all_projections = db.query(Projection).all()
 
-    results = _compute_plausibility(all_projections, all_sentiments, artifacts, year_from, year_to)
+    results = _compute_plausibility(
+        all_projections, all_sentiments, artifacts,
+        year_from, year_to, source_year_from, source_year_to,
+    )
 
-    filtered_projections = all_projections
-    if year_from is not None or year_to is not None:
-        filtered_projections = [p for p in all_projections if _projection_in_year_range(p, year_from, year_to)]
+    filtered_projections = [
+        p for p in all_projections
+        if _projection_in_filter(p, artifacts, year_from, year_to, source_year_from, source_year_to)
+    ]
 
     overall_conf = sum(p.confidence for p in filtered_projections) / len(filtered_projections) if filtered_projections else 0
     overall_sent = sum(s.score for s in all_sentiments.values()) / len(all_sentiments) if all_sentiments else 0
@@ -388,8 +410,32 @@ def get_plausibility(
             "avg_sentiment": round(overall_sent, 3),
             "plausibility": round(min(1, max(0, overall_plaus)), 3),
         },
-        "year_range": {"from": year_from, "to": year_to},
+        "year_range": {"projection": {"from": year_from, "to": year_to},
+                       "source": {"from": source_year_from, "to": source_year_to}},
     }
+
+
+def _projection_in_filter(p, artifacts, year_from, year_to, source_year_from, source_year_to):
+    artifacts_map = {a.id: a for a in artifacts}
+    if year_from is not None or year_to is not None:
+        tf_range = parse_timeframe(p.timeframe)
+        if tf_range is None:
+            return False
+        if year_from is not None and tf_range[1] < year_from:
+            return False
+        if year_to is not None and tf_range[0] > year_to:
+            return False
+    if source_year_from is not None or source_year_to is not None:
+        art = artifacts_map.get(p.artifact_id)
+        if art and art.date_published:
+            py = art.date_published.year
+            if source_year_from is not None and py < source_year_from:
+                return False
+            if source_year_to is not None and py > source_year_to:
+                return False
+        else:
+            return False
+    return True
 
 
 def _projection_in_year_range(p, year_from, year_to):
@@ -408,9 +454,11 @@ def plausibility_trend(
     year_start: int = Query(2020),
     year_end: int = Query(2100),
     step: int = Query(5),
+    mode: str = Query("projection_year"),
     db: Session = Depends(get_db),
 ):
     artifacts = db.query(Artifact).all()
+    artifacts_map = {a.id: a for a in artifacts}
     all_sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
     all_projections = db.query(Projection).all()
     all_types = sorted(set(p.projection_type for p in all_projections))
@@ -419,14 +467,16 @@ def plausibility_trend(
     if years[-1] != year_end:
         years.append(year_end)
 
-    # For each year, find projections whose timeframe covers that year
     type_series = {t: [] for t in all_types}
     for yr in years:
-        yr_results = _compute_plausibility(
-            [p for p in all_projections if _projection_covers_year(p, yr)],
-            all_sentiments,
-            artifacts,
-        )
+        if mode == "source_year":
+            sel = [
+                p for p in all_projections
+                if _projection_published_in_year(p, artifacts_map, yr)
+            ]
+        else:
+            sel = [p for p in all_projections if _projection_covers_year(p, yr)]
+        yr_results = _compute_plausibility(sel, all_sentiments, artifacts)
         for t in all_types:
             val = yr_results.get(t, {}).get("plausibility", 0)
             type_series[t].append(val)
@@ -434,6 +484,7 @@ def plausibility_trend(
     return {
         "years": years,
         "series": type_series,
+        "mode": mode,
     }
 
 
@@ -442,6 +493,13 @@ def _projection_covers_year(p, year):
     if tf_range is None:
         return False
     return tf_range[0] <= year <= tf_range[1]
+
+
+def _projection_published_in_year(p, artifacts_map, year):
+    art = artifacts_map.get(p.artifact_id)
+    if art and art.date_published:
+        return art.date_published.year == year
+    return False
 
 
 @app.post("/api/relationships")
