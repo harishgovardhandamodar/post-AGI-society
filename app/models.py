@@ -11,6 +11,7 @@ class ArtifactType(str, enum.Enum):
     TWEET = "tweet"
     PAPER = "paper"
     BOOK = "book"
+    ESSAY = "essay"
     INTERVIEW = "interview"
     PROJECTION = "projection"
     RESEARCH = "research"
