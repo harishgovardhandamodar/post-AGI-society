@@ -44,7 +44,7 @@ NITTER_ACCOUNTS = [
 
 def fetch_rss(url: str) -> List[dict]:
     try:
-        feed = feedparser.parse(url)
+        feed = feedparser.parse(url, agent="Mozilla/5.0 (compatible; PostAGIBot/1.0)")
         items = []
         for entry in feed.entries[:15]:
             items.append({

@@ -1,5 +1,6 @@
 import os
 import atexit
+import threading
 from datetime import datetime, timezone, datetime as dt
 from typing import Optional
 
@@ -17,6 +18,7 @@ from .seed_data import seed_database
 from .scraper import run_ingestion
 
 ingestion_stats = {"last_run": None, "items_fetched": 0, "total_runs": 0}
+ingestion_lock = threading.Lock()
 
 os.makedirs("data", exist_ok=True)
 
@@ -41,6 +43,8 @@ if os.path.isdir(static_dir):
 
 
 def run_scheduled_ingestion():
+    if not ingestion_lock.acquire(blocking=False):
+        return
     db = next(get_db())
     try:
         count = run_ingestion(db)
@@ -49,6 +53,7 @@ def run_scheduled_ingestion():
         ingestion_stats["total_runs"] += 1
     finally:
         db.close()
+        ingestion_lock.release()
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(run_scheduled_ingestion, "cron", hour=4, minute=0)
@@ -384,11 +389,16 @@ def ingest_status():
 
 @app.post("/api/ingest/run")
 def run_scraper_manual(db: Session = Depends(get_db)):
-    count = run_ingestion(db)
-    ingestion_stats["last_run"] = datetime.now(timezone.utc).isoformat()
-    ingestion_stats["items_fetched"] += count
-    ingestion_stats["total_runs"] += 1
-    return {"ingested": count, "total_runs": ingestion_stats["total_runs"]}
+    if not ingestion_lock.acquire(blocking=False):
+        raise HTTPException(429, "Ingestion already in progress")
+    try:
+        count = run_ingestion(db)
+        ingestion_stats["last_run"] = datetime.now(timezone.utc).isoformat()
+        ingestion_stats["items_fetched"] += count
+        ingestion_stats["total_runs"] += 1
+        return {"ingested": count, "total_runs": ingestion_stats["total_runs"]}
+    finally:
+        ingestion_lock.release()
 
 
 @app.post("/api/reseed")
