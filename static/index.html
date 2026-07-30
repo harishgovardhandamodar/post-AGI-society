@@ -12,6 +12,13 @@
   --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
   --text: #f0f6fc; --text2: #8b949e; --accent: #58a6ff;
   --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff; --teal: #56d4dd;
+  --graph-bg: #0a0e14;
+}
+html.light {
+  --bg: #f6f8fa; --bg2: #ffffff; --bg3: #eaeef2; --border: #d0d7de;
+  --text: #1f2328; --text2: #656d76; --accent: #0969da;
+  --green: #1a7f37; --orange: #bd561d; --red: #cf222e; --purple: #8250df; --teal: #096b7a;
+  --graph-bg: #f0f2f5;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -27,7 +34,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .stats-bar .num { color: var(--text); font-weight: 600; }
 .sidebar-left, .sidebar-right { background: var(--bg2); border-right: 1px solid var(--border); padding: 16px; overflow-y: auto; }
 .sidebar-right { border-right: none; border-left: 1px solid var(--border); }
-.main { overflow: hidden; position: relative; background: var(--bg); }
+.main { overflow: hidden; position: relative; background: var(--graph-bg); }
 .panel { margin-bottom: 20px; }
 .panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; font-weight: 600; }
 .filter-btn { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text2); margin: 2px; transition: all 0.15s; }
@@ -117,8 +124,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <span><i class="fas fa-bullseye"></i> Confidence: <span class="num" id="statConfidence">0</span></span>
       </div>
       <input class="search-box" id="searchInput" placeholder="Search artifacts..." />
+      <button id="themeToggle" onclick="toggleTheme()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;padding:6px 10px;font-size:13px;display:flex;align-items:center;gap:6px;"><i id="themeIcon" class="fas fa-moon"></i><span id="themeLabel">Dark</span></button>
+      </div>
     </div>
-  </div>
 
   <div class="sidebar-left">
     <div class="panel"><h3><i class="fas fa-filter"></i> Filters</h3><div id="typeFilters"></div></div>
@@ -226,12 +234,59 @@ const TYPE_GLOWS = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   initTabs();
   loadData();
   document.getElementById('searchInput').addEventListener('input', debounce(filterArtifacts, 300));
 });
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+function initTheme() {
+  const stored = localStorage.getItem('theme');
+  if (stored === 'light') applyTheme('light');
+  else applyTheme('dark');
+}
+
+function applyTheme(theme) {
+  document.documentElement.className = theme === 'light' ? 'light' : '';
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  icon.className = theme === 'light' ? 'fas fa-sun' : 'fas fa-moon';
+  label.textContent = theme === 'light' ? 'Light' : 'Dark';
+  localStorage.setItem('theme', theme);
+  if (network) {
+    const isLight = theme === 'light';
+    const edgeColor = isLight ? '#0969da44' : '#58a6ff66';
+    const edgeHighlight = isLight ? '#0969da' : '#58a6ff';
+    const fontColor = isLight ? '#1f2328' : '#ffffff';
+    const text2 = isLight ? '#656d76' : '#b0b8c4';
+    edges.forEach(e => {
+      edges.update({
+        id: e.id,
+        color: { color: edgeColor, highlight: edgeHighlight, hover: edgeHighlight },
+        font: { size: 9, color: text2, strokeWidth: 0 },
+      });
+    });
+    nodes.forEach(n => {
+      const type = graphData.nodes.find(g => g.id === n.id)?.type || 'news';
+      const bg = TYPE_COLORS[type] || '#666';
+      const glow = TYPE_GLOWS[type] || 'rgba(255,255,255,0.2)';
+      nodes.update({
+        id: n.id,
+        color: { background: bg, border: bg, highlight: { background: isLight ? '#1f2328' : '#fff', border: '#fff' }, hover: { background: bg, border: '#fff' } },
+        font: { color: fontColor, size: 11, strokeWidth: 1, strokeColor: isLight ? '#ffffff' : '#0d1117' },
+        shadow: { enabled: true, color: glow, size: 16, x: 0, y: 0 },
+      });
+    });
+    network.redraw();
+  }
+}
+
+function toggleTheme() {
+  const isLight = document.documentElement.className === 'light';
+  applyTheme(isLight ? 'dark' : 'light');
+}
 
 function initTabs() {
   document.querySelectorAll('.tab').forEach(tab => {
