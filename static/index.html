@@ -986,17 +986,28 @@ async function fetchFromWeb() {
   const orig = label.textContent;
   btn.style.pointerEvents = 'none'; btn.style.opacity = '0.7';
   label.textContent = 'Fetching...';
+  showNotif('Fetch started — running in background...', 'success');
   try {
-    const res = await fetch(`${API}/ingest/run`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ingested > 0) {
-      showNotif(`Fetched ${data.ingested} new items from web`, 'success');
-      await loadData();
-      plausibilityLoaded = false;
-    } else {
-      showNotif('No new items found (all URLs already collected)', 'success');
-      await loadIngestStatus();
+    const statusBefore = await (await fetch(`${API}/ingest/status`)).json();
+    const runsBefore = statusBefore.total_runs;
+    await fetch(`${API}/ingest/run`, { method: 'POST' });
+    let done = false;
+    for (let i = 0; i < 90 && !done; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const status = await (await fetch(`${API}/ingest/status`)).json();
+      if (status.total_runs > runsBefore) {
+        done = true;
+        const fetched = status.total_runs > runsBefore ? (status.items_fetched - statusBefore.items_fetched) : 0;
+        if (fetched > 0) {
+          showNotif(`Fetched ${fetched} new items from web`, 'success');
+        } else {
+          showNotif('No new items found (all URLs already collected)', 'success');
+        }
+        await loadData();
+        plausibilityLoaded = false;
+      }
     }
+    if (!done) showNotif('Fetch still running — check back later', 'success');
   } catch (e) {
     showNotif('Error fetching from web sources', 'error');
   }

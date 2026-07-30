@@ -391,14 +391,24 @@ def ingest_status():
 def run_scraper_manual(db: Session = Depends(get_db)):
     if not ingestion_lock.acquire(blocking=False):
         raise HTTPException(429, "Ingestion already in progress")
-    try:
-        count = run_ingestion(db)
-        ingestion_stats["last_run"] = datetime.now(timezone.utc).isoformat()
-        ingestion_stats["items_fetched"] += count
-        ingestion_stats["total_runs"] += 1
-        return {"ingested": count, "total_runs": ingestion_stats["total_runs"]}
-    finally:
-        ingestion_lock.release()
+    ingestion_lock.release()
+
+    def _background_ingest():
+        if not ingestion_lock.acquire(blocking=False):
+            return
+        db_bg = next(get_db())
+        try:
+            count = run_ingestion(db_bg)
+            ingestion_stats["last_run"] = datetime.now(timezone.utc).isoformat()
+            ingestion_stats["items_fetched"] += count
+            ingestion_stats["total_runs"] += 1
+        finally:
+            db_bg.close()
+            ingestion_lock.release()
+
+    import threading
+    threading.Thread(target=_background_ingest, daemon=True).start()
+    return {"ingested": -1, "status": "started", "total_runs": ingestion_stats["total_runs"]}
 
 
 @app.post("/api/reseed")

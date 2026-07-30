@@ -20,7 +20,6 @@ RSS_FEEDS = [
 
 NITTER_INSTANCES = [
     "https://nitter.net",
-    "https://nitter.poast.org",
     "https://nitter.catsarch.com",
     "https://nitter.tiekoetter.com",
 ]
@@ -44,7 +43,11 @@ NITTER_ACCOUNTS = [
 
 def fetch_rss(url: str) -> List[dict]:
     try:
-        feed = feedparser.parse(url, agent="Mozilla/5.0 (compatible; PostAGIBot/1.0)")
+        import io, urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; PostAGIBot/1.0)"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read()
+        feed = feedparser.parse(io.BytesIO(raw))
         items = []
         for entry in feed.entries[:15]:
             items.append({
@@ -98,7 +101,7 @@ def scrape_nitter_tweets(account: str) -> List[dict]:
         try:
             url = f"{instance}/{account}"
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = requests.get(url, headers=headers, timeout=6)
             if resp.status_code != 200:
                 continue
 
@@ -156,7 +159,7 @@ def scrape_arxiv_papers(max_results: int = 30) -> List[dict]:
         url = f"http://export.arxiv.org/api/query?search_query=all:{query}&start=0&max_results={max_results // len(ARXIV_QUERIES) + 1}&sortBy=submittedDate&sortOrder=descending"
         try:
             import xml.etree.ElementTree as ET
-            resp = requests.get(url, timeout=20)
+            resp = requests.get(url, timeout=10)
             root = ET.fromstring(resp.content)
             ns = {"a": "http://www.w3.org/2005/Atom"}
             for entry in root.findall("a:entry", ns):
