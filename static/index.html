@@ -39,7 +39,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .right-panel-toggle { position: fixed; top: 60px; right: 0; z-index: 50; background: var(--bg2); border: 1px solid var(--border); border-right: none; border-radius: 6px 0 0 6px; color: var(--text2); cursor: pointer; padding: 8px 6px; font-size: 13px; transition: right 0.2s; }
 .layout.collapsed .right-panel-toggle { right: 0; border-radius: 6px 0 0 6px; }
 .right-panel-toggle:hover { background: var(--bg3); color: var(--text); }
-.main { overflow: hidden; position: relative; background: var(--graph-bg); }
+.main { overflow: hidden; position: relative; background: var(--graph-bg); display: flex; flex-direction: column; }
+.main-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.main-tab { padding: 10px 20px; font-size: 13px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; transition: all 0.15s; user-select: none; }
+.main-tab:hover { color: var(--text); background: var(--bg3); }
+.main-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.main-content { flex: 1; min-height: 0; position: relative; }
 .panel { margin-bottom: 20px; flex-shrink: 0; }
 .sidebar-left .panel:last-child { flex-shrink: 1; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .sidebar-left .panel:last-child .artifact-list { flex: 1; }
@@ -110,6 +115,45 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .overlay-body .proj-card { background: var(--bg3); border-radius: 6px; padding: 8px 12px; margin-bottom: 4px; }
 .overlay-body .proj-card .proj-type { font-weight: 500; font-size: 12px; }
 .overlay-body .proj-card .proj-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+/* Plausibility view */
+#plausibilityView { display: none; padding: 24px; overflow-y: auto; height: 100%; }
+#plausibilityView.visible { display: block; }
+.plaus-overall { text-align: center; margin-bottom: 32px; padding: 24px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; }
+.plaus-overall-ring { position: relative; width: 100px; height: 100px; margin: 0 auto 12px; }
+.plaus-overall-ring svg { transform: rotate(-90deg); }
+.plaus-overall-ring .bg { fill: none; stroke: var(--bg3); stroke-width: 6; }
+.plaus-overall-ring .fill { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 1.5s ease-out; }
+.plaus-overall-ring .label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--text); }
+.plaus-overall h2 { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+.plaus-overall .sub { font-size: 12px; color: var(--text2); }
+.plaus-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.plaus-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px; position: relative; overflow: hidden; }
+.plaus-card .plaus-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.plaus-card .plaus-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.plaus-card .plaus-title i { font-size: 16px; }
+.plaus-card .plaus-badge { font-size: 11px; padding: 2px 10px; border-radius: 10px; font-weight: 600; }
+.plaus-card .plaus-gauge-wrap { height: 8px; background: var(--bg3); border-radius: 4px; margin-bottom: 6px; overflow: hidden; }
+.plaus-card .plaus-gauge-fill { height: 100%; border-radius: 4px; transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1); width: 0; position: relative; }
+.plaus-card .plaus-gauge-fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25)); border-radius: 4px; }
+.plaus-card .plaus-stat { display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); margin-bottom: 2px; }
+.plaus-card .plaus-stat span:last-child { font-weight: 600; color: var(--text); }
+.plaus-card .plaus-artifacts { margin-top: 10px; font-size: 11px; color: var(--text2); }
+.plaus-card .plaus-artifacts .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+@keyframes pulse-glow { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.plaus-card .plaus-pulse { animation: pulse-glow 2s ease-in-out infinite; }
+.plaus-card .plaus-ring-small { width: 48px; height: 48px; position: relative; flex-shrink: 0; }
+.plaus-card .plaus-ring-small svg { transform: rotate(-90deg); }
+.plaus-card .plaus-ring-small .bg { fill: none; stroke: var(--bg3); stroke-width: 4; }
+.plaus-card .plaus-ring-small .fill { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 1.2s ease-out; }
+.plaus-card .plaus-ring-small .num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.plaus-card .plaus-body { flex: 1; }
+.plaus-card-inner { display: flex; gap: 14px; align-items: flex-start; }
+.plaus-card .plaus-meta-row { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
+.plaus-card .plaus-meta-item { font-size: 11px; color: var(--text2); }
+.plaus-card .plaus-meta-item strong { color: var(--text); font-weight: 600; }
+@keyframes count-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.plaus-count-anim { animation: count-up 0.4s ease-out both; }
 .concept-card { background: var(--bg3); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
 .concept-card .concept-title { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
 .concept-card .concept-body { font-size: 12px; line-height: 1.5; color: var(--text); }
@@ -142,14 +186,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="panel"><h3><i class="fas fa-list"></i> Artifacts</h3><div id="artifactList" class="artifact-list"></div></div>
   </div>
 
-  <div class="main" id="graphContainer">
-    <div class="graph-controls">
-      <button onclick="zoomIn()" title="Zoom in"><i class="fas fa-plus"></i></button>
-      <button onclick="zoomOut()" title="Zoom out"><i class="fas fa-minus"></i></button>
-      <button onclick="fitGraph()" title="Fit view"><i class="fas fa-expand"></i></button>
-      <button onclick="togglePhysics()" title="Toggle physics"><i class="fas fa-arrows-alt"></i></button>
+  <div class="main">
+    <div class="main-tabs">
+      <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph</div>
+      <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility</div>
     </div>
-    <div id="graph"></div>
+    <div class="main-content">
+      <div id="graphContainer" style="height:100%;position:relative;">
+        <div class="graph-controls">
+          <button onclick="zoomIn()" title="Zoom in"><i class="fas fa-plus"></i></button>
+          <button onclick="zoomOut()" title="Zoom out"><i class="fas fa-minus"></i></button>
+          <button onclick="fitGraph()" title="Fit view"><i class="fas fa-expand"></i></button>
+          <button onclick="togglePhysics()" title="Toggle physics"><i class="fas fa-arrows-alt"></i></button>
+        </div>
+        <div id="graph" style="height:100%;"></div>
+      </div>
+      <div id="plausibilityView"></div>
+    </div>
   </div>
 
   <div class="sidebar-right" id="sidebarRight">
@@ -404,8 +457,6 @@ function renderArtifactList(items) {
 
 function renderGraph() {
   const container = document.getElementById('graph');
-  const height = container.parentElement.clientHeight;
-  container.style.height = height + 'px';
 
   const glows = graphData.nodes.map(n => ({
     id: n.id,
@@ -768,6 +819,141 @@ async function createRelationship() {
   } catch (e) { showNotif('Error creating relationship', 'error'); }
 }
 
+let plausibilityLoaded = false;
+
+const PROJ_COLORS = {
+  utopian: '#3fb950', dystopian: '#f85149', cautionary: '#d29922',
+  accelerationist: '#bc8cff', neutral: '#8b949e'
+};
+const PROJ_ICONS = {
+  utopian: 'fa-rocket', dystopian: 'fa-skull', cautionary: 'fa-exclamation-triangle',
+  accelerationist: 'fa-bolt', neutral: 'fa-balance-scale'
+};
+
+function switchMainView(view) {
+  document.querySelectorAll('.main-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.getElementById('graphContainer').style.display = view === 'graph' ? 'block' : 'none';
+  document.getElementById('plausibilityView').style.display = view === 'plausibility' ? 'block' : 'none';
+  document.getElementById('plausibilityView').classList.toggle('visible', view === 'plausibility');
+  if (view === 'graph' && network) setTimeout(() => network.fit({ animation: true }), 100);
+  if (view === 'plausibility' && !plausibilityLoaded) { plausibilityLoaded = true; loadPlausibility(); }
+}
+
+async function loadPlausibility() {
+  const el = document.getElementById('plausibilityView');
+  el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Computing plausibility...</div>';
+  try {
+    const res = await fetch(`${API}/plausibility`);
+    const data = await res.json();
+    renderPlausibility(data);
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load plausibility</div>';
+  }
+}
+
+function renderPlausibility(data) {
+  const el = document.getElementById('plausibilityView');
+  const overall = data.overall;
+  const types = data.types;
+  const circum = 2 * Math.PI * 44;
+  const smallCircum = 2 * Math.PI * 20;
+
+  // Overall card
+  const overallPct = Math.round(overall.plausibility * 100);
+  const overallOffset = circum - (overallPct / 100) * circum;
+  let html = `
+    <div class="plaus-overall">
+      <div class="plaus-overall-ring">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="44"/>
+          <circle class="fill" cx="50" cy="50" r="44" stroke-dasharray="${circum}" stroke-dashoffset="${circum}" id="overallRing"/>
+        </svg>
+        <div class="label" id="overallLabel">0%</div>
+      </div>
+      <h2>Overall Plausibility</h2>
+      <div class="sub"><span id="overallConf">0</span>% avg confidence · <span id="overallSent">0.00</span> avg sentiment · ${overall.total_projections} projections</div>
+    </div>
+    <div class="plaus-grid">`;
+
+  // Sort types by plausibility desc
+  const sorted = Object.entries(types).sort((a, b) => b[1].plausibility - a[1].plausibility);
+  for (const [ptype, p] of sorted) {
+    const pct = Math.round(p.plausibility * 100);
+    const confPct = Math.round(p.avg_confidence * 100);
+    const color = PROJ_COLORS[ptype] || '#8b949e';
+    const icon = PROJ_ICONS[ptype] || 'fa-circle';
+    const off = smallCircum - (pct / 100) * smallCircum;
+    const artifacts = p.artifacts || [];
+
+    html += `
+      <div class="plaus-card">
+        <div class="plaus-card-inner">
+          <div class="plaus-ring-small">
+            <svg width="48" height="48" viewBox="0 0 48 48">
+              <circle class="bg" cx="24" cy="24" r="20"/>
+              <circle class="fill" cx="24" cy="24" r="20" stroke="${color}" stroke-dasharray="${smallCircum}" stroke-dashoffset="${off}" id="ring-${ptype}"/>
+            </svg>
+            <div class="num" style="color:${color}" id="num-${ptype}">0%</div>
+          </div>
+          <div class="plaus-body">
+            <div class="plaus-header" style="margin-bottom:8px;">
+              <div class="plaus-title" style="color:${color}"><i class="fas ${icon}"></i>${ptype}</div>
+              <span class="plaus-badge" style="background:${color}22;color:${color};">${p.count}</span>
+            </div>
+            <div class="plaus-stat"><span>Confidence</span><span id="conf-${ptype}">0%</span></div>
+            <div class="plaus-gauge-wrap"><div class="plaus-gauge-fill" style="background:${color}" id="gauge-${ptype}"></div></div>
+            <div class="plaus-meta-row">
+              <div class="plaus-meta-item">Sentiment <strong id="sent-${ptype}">0.00</strong></div>
+              <div class="plaus-meta-item">Plausibility <strong id="plaus-${ptype}">0%</strong></div>
+            </div>
+            ${artifacts.length > 0 ? `<div class="plaus-artifacts"><span class="dot" style="background:${color}"></span>${artifacts.slice(0, 8).join(' · ')}${artifacts.length > 8 ? ' · +' + (artifacts.length - 8) + ' more' : ''}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+
+  // Animate with staggered delays
+  setTimeout(() => {
+    const ring = document.getElementById('overallRing');
+    if (ring) ring.style.strokeDashoffset = overallOffset;
+    animateNumber('overallLabel', 0, overallPct, '%', 1200);
+    animateNumber('overallConf', 0, Math.round(overall.avg_confidence * 100), '%', 1000);
+    animateNumber('overallSent', 0, overall.avg_sentiment, '', 1000, true);
+
+    sorted.forEach(([ptype, p], i) => {
+      const delay = 200 + i * 180;
+      const pct = Math.round(p.plausibility * 100);
+      const confPct = Math.round(p.avg_confidence * 100);
+      setTimeout(() => {
+        const ring = document.getElementById(`ring-${ptype}`);
+        if (ring) ring.style.strokeDashoffset = smallCircum - (pct / 100) * smallCircum;
+        const gauge = document.getElementById(`gauge-${ptype}`);
+        if (gauge) gauge.style.width = confPct + '%';
+        animateNumber(`num-${ptype}`, 0, pct, '%', 800);
+        animateNumber(`conf-${ptype}`, 0, confPct, '%', 700);
+        animateNumber(`plaus-${ptype}`, 0, pct, '%', 800);
+        animateNumber(`sent-${ptype}`, 0, p.avg_sentiment, '', 700, true);
+      }, delay);
+    });
+  }, 100);
+}
+
+function animateNumber(elId, from, to, suffix, duration, isFloat) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const val = from + (to - from) * eased;
+    el.textContent = isFloat ? val.toFixed(2) : Math.round(val) + (suffix || '');
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
 async function reseedDatabase() {
   if (!confirm('This will delete all data and re-seed. Continue?')) return;
   try {
@@ -786,11 +972,7 @@ function showNotif(msg, type) {
 }
 
 window.addEventListener('resize', () => {
-  if (network) {
-    const h = document.querySelector('.main').clientHeight;
-    document.getElementById('graph').style.height = h + 'px';
-    network.fit({ animation: false });
-  }
+  if (network) network.fit({ animation: false });
 });
 </script>
 </body>

@@ -277,6 +277,58 @@ def get_stats(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/plausibility")
+def get_plausibility(db: Session = Depends(get_db)):
+    artifacts = db.query(Artifact).all()
+    all_sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
+    all_projections = db.query(Projection).all()
+
+    type_data = {}
+    for p in all_projections:
+        t = p.projection_type
+        if t not in type_data:
+            type_data[t] = {"confs": [], "sents": [], "artifacts": set()}
+        type_data[t]["confs"].append(p.confidence)
+        type_data[t]["artifacts"].add(p.artifact_id)
+
+    for aid, s in all_sentiments.items():
+        for t, d in type_data.items():
+            if aid in d["artifacts"]:
+                d["sents"].append(s.score)
+
+    results = {}
+    for ptype, d in type_data.items():
+        avg_conf = sum(d["confs"]) / len(d["confs"]) if d["confs"] else 0
+        avg_sent = sum(d["sents"]) / len(d["sents"]) if d["sents"] else 0
+        plausibility = avg_conf * 0.6 + max(0, avg_sent) * 0.4
+        artifact_titles = [
+            a.title
+            for a in artifacts
+            if a.id in d["artifacts"]
+        ]
+        results[ptype] = {
+            "count": len(d["confs"]),
+            "avg_confidence": round(avg_conf, 3),
+            "avg_sentiment": round(avg_sent, 3),
+            "plausibility": round(min(1, max(0, plausibility)), 3),
+            "artifacts": artifact_titles[:15],
+        }
+
+    overall_conf = sum(p.confidence for p in all_projections) / len(all_projections) if all_projections else 0
+    overall_sent = sum(s.score for s in all_sentiments.values()) / len(all_sentiments) if all_sentiments else 0
+    overall_plaus = overall_conf * 0.6 + max(0, overall_sent) * 0.4
+
+    return {
+        "types": results,
+        "overall": {
+            "total_projections": len(all_projections),
+            "avg_confidence": round(overall_conf, 3),
+            "avg_sentiment": round(overall_sent, 3),
+            "plausibility": round(min(1, max(0, overall_plaus)), 3),
+        },
+    }
+
+
 @app.post("/api/relationships")
 def create_relationship(data: RelationshipCreate, db: Session = Depends(get_db)):
     src = db.query(Artifact).filter(Artifact.id == data.source_id).first()
