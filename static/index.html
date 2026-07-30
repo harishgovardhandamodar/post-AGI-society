@@ -669,7 +669,7 @@ function renderSentimentChart(data) {
   const colors = ['#f85149', '#d29922', '#8b949e', '#3fb950', '#56d4dd'];
   allArtifacts.forEach(a => {
     const s = a.sentiment;
-    if (s !== undefined) {
+    if (s != null) {
       if (s <= -0.6) counts[0]++; else if (s <= -0.2) counts[1]++; else if (s < 0.2) counts[2]++; else if (s < 0.6) counts[3]++; else counts[4]++;
     }
   });

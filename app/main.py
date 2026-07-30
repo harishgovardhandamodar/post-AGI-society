@@ -85,7 +85,8 @@ def list_artifacts(
     offset: int = Query(0),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Artifact)
+    from sqlalchemy.orm import joinedload
+    q = db.query(Artifact).options(joinedload(Artifact.sentiments))
 
     if artifact_type:
         q = q.filter(Artifact.artifact_type == artifact_type)
@@ -101,7 +102,17 @@ def list_artifacts(
     total = q.count()
     items = q.order_by(Artifact.created_at.desc()).offset(offset).limit(limit).all()
 
-    return {"total": total, "items": [_artifact_json(a) for a in items]}
+    result = []
+    for a in items:
+        d = _artifact_json(a)
+        sents = a.sentiments
+        if sents:
+            d["sentiment"] = round(sum(s.score for s in sents) / len(sents), 2)
+        else:
+            d["sentiment"] = None
+        result.append(d)
+
+    return {"total": total, "items": result}
 
 
 @app.get("/api/artifacts/{artifact_id}")
