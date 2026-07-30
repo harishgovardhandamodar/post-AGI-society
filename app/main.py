@@ -1,5 +1,6 @@
 import os
-from datetime import datetime, timezone
+import atexit
+from datetime import datetime, timezone, datetime as dt
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query
@@ -8,11 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from .database import init_db, get_db
 from .models import Artifact, Sentiment, Projection, Relationship, ArtifactType
 from .seed_data import seed_database
 from .scraper import run_ingestion
+
+ingestion_stats = {"last_run": None, "items_fetched": 0, "total_runs": 0}
 
 os.makedirs("data", exist_ok=True)
 
@@ -34,6 +38,22 @@ if os.path.isdir(static_dir):
     @app.get("/")
     def serve_index():
         return FileResponse(os.path.join(static_dir, "index.html"))
+
+
+def run_scheduled_ingestion():
+    db = next(get_db())
+    try:
+        count = run_ingestion(db)
+        ingestion_stats["last_run"] = datetime.now(timezone.utc).isoformat()
+        ingestion_stats["items_fetched"] += count
+        ingestion_stats["total_runs"] += 1
+    finally:
+        db.close()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(run_scheduled_ingestion, "cron", hour=4, minute=0)
+scheduler.start()
+atexit.register(lambda: scheduler.shutdown(wait=False))
 
 
 @app.on_event("startup")
@@ -357,10 +377,18 @@ def create_relationship(data: RelationshipCreate, db: Session = Depends(get_db))
     }
 
 
+@app.get("/api/ingest/status")
+def ingest_status():
+    return ingestion_stats
+
+
 @app.post("/api/ingest/run")
-def run_scraper(db: Session = Depends(get_db)):
+def run_scraper_manual(db: Session = Depends(get_db)):
     count = run_ingestion(db)
-    return {"ingested": count}
+    ingestion_stats["last_run"] = datetime.now(timezone.utc).isoformat()
+    ingestion_stats["items_fetched"] += count
+    ingestion_stats["total_runs"] += 1
+    return {"ingested": count, "total_runs": ingestion_stats["total_runs"]}
 
 
 @app.post("/api/reseed")
