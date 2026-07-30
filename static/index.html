@@ -9,18 +9,9 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 <style>
 :root {
-  --bg: #0d1117;
-  --bg2: #161b22;
-  --bg3: #21262d;
-  --border: #30363d;
-  --text: #f0f6fc;
-  --text2: #8b949e;
-  --accent: #58a6ff;
-  --green: #3fb950;
-  --orange: #d29922;
-  --red: #f85149;
-  --purple: #bc8cff;
-  --teal: #56d4dd;
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
+  --text: #f0f6fc; --text2: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --orange: #d29922; --red: #f85149; --purple: #bc8cff; --teal: #56d4dd;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -46,14 +37,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .artifact-item { padding: 8px 10px; background: var(--bg3); border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; font-size: 12px; }
 .artifact-item:hover { border-color: var(--accent); }
 .artifact-item .title { font-weight: 500; margin-bottom: 2px; }
-.artifact-item .meta { font-size: 11px; color: var(--text2); display: flex; gap: 8px; }
+.artifact-item .meta { font-size: 11px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; }
 .artifact-item .type-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; }
 .chart-container { height: 140px; margin-bottom: 8px; }
 .graph-controls { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; flex-direction: column; gap: 4px; }
 .graph-controls button { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); cursor: pointer; font-size: 13px; }
 .graph-controls button:hover { background: var(--bg3); }
-.graph-tooltip { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; z-index: 10; display: none; max-width: 400px; font-size: 13px; }
-.graph-tooltip.visible { display: block; }
 .form-group { margin-bottom: 10px; }
 .form-group label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 3px; }
 .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
@@ -66,21 +55,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tabs { display: flex; gap: 2px; margin-bottom: 12px; background: var(--bg3); border-radius: 6px; padding: 2px; }
 .tab { flex: 1; text-align: center; padding: 6px; font-size: 11px; cursor: pointer; border-radius: 4px; color: var(--text2); }
 .tab.active { background: var(--bg2); color: var(--text); }
-.type-news { color: var(--accent); }
-.type-paper { color: var(--green); }
-.type-book { color: var(--orange); }
-.type-essay { color: var(--purple); }
-.type-tweet { color: var(--teal); }
-.type-interview { color: var(--red); }
-.type-research { color: var(--purple); }
-.type-projection { color: var(--orange); }
 .badge-news { background: #1f3a5f; color: var(--accent); }
 .badge-paper { background: #1a3d2a; color: var(--green); }
 .badge-book { background: #3d2e1a; color: var(--orange); }
 .badge-essay { background: #2d1f3d; color: var(--purple); }
 .badge-tweet { background: #1a3d3d; color: var(--teal); }
 .badge-interview { background: #3d1a1a; color: var(--red); }
-.badge-essay { background: #2d1f3d; color: var(--purple); }
 .badge-research { background: #3d1f3d; color: #da8fff; }
 .badge-projection { background: #3d2e1a; color: var(--orange); }
 .notif { position: fixed; bottom: 20px; right: 20px; padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 1000; display: none; }
@@ -89,9 +69,41 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
 .empty-state i { font-size: 32px; margin-bottom: 12px; color: var(--border); }
 .tag { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; background: var(--bg3); color: var(--text2); margin: 1px; }
-.legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--text2); margin-bottom: 8px; }
-.legend-item { display: flex; align-items: center; gap: 4px; }
-.legend-color { width: 10px; height: 10px; border-radius: 2px; }
+
+/* Overlay */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display: none; align-items: center; justify-content: center; padding: 40px; }
+.overlay.visible { display: flex; }
+.overlay-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; max-width: 720px; width: 100%; max-height: 85vh; overflow-y: auto; padding: 0; position: relative; }
+.overlay-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg2); z-index: 2; }
+.overlay-close { position: absolute; top: 16px; right: 16px; background: transparent; border: none; color: var(--text2); cursor: pointer; font-size: 18px; padding: 4px 8px; border-radius: 4px; }
+.overlay-close:hover { background: var(--bg3); color: var(--text); }
+.overlay-body { padding: 16px 24px 20px; }
+.overlay-section { margin-bottom: 16px; }
+.overlay-section:last-child { margin-bottom: 0; }
+.overlay-section h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 6px; font-weight: 600; }
+.overlay-section p { font-size: 13px; line-height: 1.5; color: var(--text); }
+.overlay-section .url-link { font-size: 12px; color: var(--accent); word-break: break-all; }
+.similar-item { padding: 8px 10px; background: var(--bg3); border-radius: 6px; margin-bottom: 4px; cursor: pointer; border: 1px solid transparent; font-size: 12px; transition: all 0.15s; }
+.similar-item:hover { border-color: var(--accent); }
+.similar-item .sim-score { float: right; font-size: 11px; color: var(--text2); }
+.similar-item .sim-reasons { font-size: 10px; color: var(--text2); margin-top: 2px; }
+.overlay-body .rel-item { font-size: 12px; padding: 4px 0; display: flex; gap: 6px; align-items: baseline; }
+.overlay-body .rel-type { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg3); color: var(--text2); white-space: nowrap; }
+.sentiment-bar { display: flex; align-items: center; gap: 8px; }
+.sentiment-bar .bar-track { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; position: relative; }
+.sentiment-bar .bar-fill { height: 6px; border-radius: 3px; position: absolute; top: 0; transition: width 0.3s; }
+.confidence-ring { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.overlay-body .proj-card { background: var(--bg3); border-radius: 6px; padding: 8px 12px; margin-bottom: 4px; }
+.overlay-body .proj-card .proj-type { font-weight: 500; font-size: 12px; }
+.overlay-body .proj-card .proj-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.concept-card { background: var(--bg3); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; }
+.concept-card .concept-title { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+.concept-card .concept-body { font-size: 12px; line-height: 1.5; color: var(--text); }
+.source-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; background: var(--bg3); border: 1px solid var(--border); color: var(--accent); cursor: pointer; text-decoration: none; transition: all 0.15s; }
+.source-btn:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.sim-score-ring { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.sim-item-row { display: flex; align-items: center; gap: 10px; }
+.sim-tags { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; }
 </style>
 </head>
 <body>
@@ -109,25 +121,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   </div>
 
   <div class="sidebar-left">
-    <div class="panel">
-      <h3><i class="fas fa-filter"></i> Filters</h3>
-      <div id="typeFilters"></div>
-    </div>
-
-    <div class="panel">
-      <h3><i class="fas fa-chart-pie"></i> Sentiment Distribution</h3>
-      <div class="chart-container"><canvas id="sentimentChart"></canvas></div>
-    </div>
-
-    <div class="panel">
-      <h3><i class="fas fa-bullseye"></i> Projection Confidence</h3>
-      <div class="chart-container"><canvas id="confidenceChart"></canvas></div>
-    </div>
-
-    <div class="panel">
-      <h3><i class="fas fa-list"></i> Artifacts</h3>
-      <div id="artifactList" class="artifact-list"></div>
-    </div>
+    <div class="panel"><h3><i class="fas fa-filter"></i> Filters</h3><div id="typeFilters"></div></div>
+    <div class="panel"><h3><i class="fas fa-chart-pie"></i> Sentiment</h3><div class="chart-container"><canvas id="sentimentChart"></canvas></div></div>
+    <div class="panel"><h3><i class="fas fa-bullseye"></i> Projection Confidence</h3><div class="chart-container"><canvas id="confidenceChart"></canvas></div></div>
+    <div class="panel"><h3><i class="fas fa-list"></i> Artifacts</h3><div id="artifactList" class="artifact-list"></div></div>
   </div>
 
   <div class="main" id="graphContainer">
@@ -138,7 +135,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <button onclick="togglePhysics()" title="Toggle physics"><i class="fas fa-arrows-alt"></i></button>
     </div>
     <div id="graph"></div>
-    <div class="graph-tooltip" id="graphTooltip"></div>
   </div>
 
   <div class="sidebar-right">
@@ -146,108 +142,61 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <div class="tab active" data-tab="ingest">Add</div>
       <div class="tab" data-tab="relate">Relate</div>
     </div>
-
     <div id="ingestPanel">
       <div class="panel">
         <h3><i class="fas fa-plus-circle"></i> New Artifact</h3>
-        <div class="form-group">
-          <label>Title</label>
-          <input id="fTitle" placeholder="e.g. Yann LeCun on AGI timelines" />
-        </div>
-        <div class="form-group">
-          <label>Type</label>
+        <div class="form-group"><label>Title</label><input id="fTitle" placeholder="e.g. Yann LeCun on AGI timelines" /></div>
+        <div class="form-group"><label>Type</label>
           <select id="fType">
-            <option value="news">News</option>
-            <option value="paper">Paper</option>
-            <option value="book">Book</option>
-            <option value="essay">Essay</option>
-            <option value="tweet">Tweet</option>
-            <option value="interview">Interview</option>
-            <option value="research">Research</option>
-            <option value="projection">Projection</option>
+            <option value="news">News</option><option value="paper">Paper</option><option value="book">Book</option>
+            <option value="essay">Essay</option><option value="tweet">Tweet</option><option value="interview">Interview</option>
+            <option value="research">Research</option><option value="projection">Projection</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>Author / Source</label>
-          <input id="fAuthor" placeholder="e.g. Yann LeCun" />
-        </div>
-        <div class="form-group">
-          <label>URL</label>
-          <input id="fUrl" placeholder="https://..." />
-        </div>
-        <div class="form-group">
-          <label>Description</label>
-          <textarea id="fDesc" placeholder="Brief summary..."></textarea>
-        </div>
-        <div class="form-group">
-          <label>Tags (comma-separated)</label>
-          <input id="fTags" placeholder="timelines,optimism" />
-        </div>
-
-        <details style="margin: 10px 0;">
-          <summary style="font-size: 11px; color: var(--text2); cursor: pointer;">+ Sentiment & Projection</summary>
-          <div class="form-group" style="margin-top: 8px;">
-            <label>Sentiment Score (-1 to 1)</label>
-            <input id="fSentiment" type="number" step="0.1" min="-1" max="1" placeholder="0" />
+        <div class="form-group"><label>Author / Source</label><input id="fAuthor" placeholder="e.g. Yann LeCun" /></div>
+        <div class="form-group"><label>URL</label><input id="fUrl" placeholder="https://..." /></div>
+        <div class="form-group"><label>Description</label><textarea id="fDesc" placeholder="Brief summary..."></textarea></div>
+        <div class="form-group"><label>Tags (comma-separated)</label><input id="fTags" placeholder="timelines,optimism" /></div>
+        <details style="margin:10px 0;">
+          <summary style="font-size:11px;color:var(--text2);cursor:pointer;">+ Sentiment & Projection</summary>
+          <div class="form-group" style="margin-top:8px;"><label>Sentiment Score (-1 to 1)</label><input id="fSentiment" type="number" step="0.1" min="-1" max="1" placeholder="0" /></div>
+          <div class="form-group"><label>Projection Type</label>
+            <select id="fProjType"><option value="">None</option><option value="utopian">Utopian</option><option value="dystopian">Dystopian</option><option value="cautionary">Cautionary</option><option value="accelerationist">Accelerationist</option><option value="neutral">Neutral</option></select>
           </div>
-          <div class="form-group">
-            <label>Projection Type</label>
-            <select id="fProjType">
-              <option value="">None</option>
-              <option value="utopian">Utopian</option>
-              <option value="dystopian">Dystopian</option>
-              <option value="cautionary">Cautionary</option>
-              <option value="accelerationist">Accelerationist</option>
-              <option value="neutral">Neutral</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Confidence (0-1)</label>
-            <input id="fConfidence" type="number" step="0.05" min="0" max="1" placeholder="0.5" />
-          </div>
-          <div class="form-group">
-            <label>Timeframe</label>
-            <input id="fTimeframe" placeholder="e.g. 2030-2035" />
-          </div>
+          <div class="form-group"><label>Confidence (0-1)</label><input id="fConfidence" type="number" step="0.05" min="0" max="1" placeholder="0.5" /></div>
+          <div class="form-group"><label>Timeframe</label><input id="fTimeframe" placeholder="e.g. 2030-2035" /></div>
         </details>
-
-        <button class="btn btn-primary" onclick="ingestArtifact()" style="width:100%;">
-          <i class="fas fa-cloud-upload-alt"></i> Ingest
-        </button>
+        <button class="btn btn-primary" onclick="ingestArtifact()" style="width:100%;"><i class="fas fa-cloud-upload-alt"></i> Ingest</button>
       </div>
     </div>
-
     <div id="relatePanel" style="display:none;">
       <div class="panel">
         <h3><i class="fas fa-link"></i> Create Relationship</h3>
-        <div class="form-group">
-          <label>Source Artifact</label>
-          <select id="relSource"></select>
+        <div class="form-group"><label>Source</label><select id="relSource"></select></div>
+        <div class="form-group"><label>Relationship</label>
+          <select id="relType"><option value="references">References</option><option value="supports">Supports</option><option value="contradicts">Contradicts</option><option value="builds_upon">Builds Upon</option><option value="responds_to">Responds To</option><option value="similar_to">Similar To</option></select>
         </div>
-        <div class="form-group">
-          <label>Relationship</label>
-          <select id="relType">
-            <option value="references">References</option>
-            <option value="supports">Supports</option>
-            <option value="contradicts">Contradicts</option>
-            <option value="builds_upon">Builds Upon</option>
-            <option value="responds_to">Responds To</option>
-            <option value="similar_to">Similar To</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Target Artifact</label>
-          <select id="relTarget"></select>
-        </div>
-        <div class="form-group">
-          <label>Description (optional)</label>
-          <input id="relDesc" placeholder="Context..." />
-        </div>
-        <button class="btn btn-primary" onclick="createRelationship()" style="width:100%;">
-          <i class="fas fa-link"></i> Relate
-        </button>
+        <div class="form-group"><label>Target</label><select id="relTarget"></select></div>
+        <div class="form-group"><label>Description</label><input id="relDesc" placeholder="Context..." /></div>
+        <button class="btn btn-primary" onclick="createRelationship()" style="width:100%;"><i class="fas fa-link"></i> Relate</button>
       </div>
     </div>
+    <details style="margin-top:16px;">
+      <summary style="font-size:11px;color:var(--text2);cursor:pointer;"><i class="fas fa-database"></i> Database</summary>
+      <div style="margin-top:8px;">
+        <button class="btn btn-sm" onclick="reseedDatabase()" style="background:var(--orange);color:var(--bg);border:none;width:100%;"><i class="fas fa-sync"></i> Re-seed Database</button>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px;">Clears all data and reloads from seed. Use after updating seed data.</div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- Detail overlay -->
+<div class="overlay" id="detailOverlay">
+  <div class="overlay-panel">
+    <button class="overlay-close" onclick="closeOverlay()"><i class="fas fa-times"></i></button>
+    <div class="overlay-header" id="overlayHeader"></div>
+    <div class="overlay-body" id="overlayBody"></div>
   </div>
 </div>
 
@@ -263,15 +212,11 @@ let graphData = null;
 let physicsEnabled = true;
 let sentimentChartInstance = null;
 let confidenceChartInstance = null;
+let overlayOpen = false;
 
 const TYPE_COLORS = {
   news: '#58a6ff', paper: '#3fb950', book: '#d29922', essay: '#bc8cff',
   tweet: '#56d4dd', interview: '#f85149', research: '#da8fff', projection: '#d29922'
-};
-
-const TYPE_ICONS = {
-  news: 'newspaper', paper: 'file-alt', book: 'book', essay: 'feather-alt',
-  tweet: 'twitter', interview: 'microphone', research: 'flask', projection: 'chart-line'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -360,12 +305,14 @@ function renderArtifactList(items) {
   }
   container.innerHTML = items.map(a => {
     const badge = a.artifact_type;
+    const sent = allArtifacts.find(x => x.id === a.id)?.sentiment;
     return `<div class="artifact-item" onclick="focusNode(${a.id})">
       <div class="title"><span class="type-badge badge-${badge}">${badge}</span> ${a.title}</div>
       <div class="meta">
         <span>${a.author || 'Unknown'}</span>
         ${a.date_published ? `<span>${new Date(a.date_published).toLocaleDateString()}</span>` : ''}
-        ${a.tags ? `<span>${a.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('')}</span>` : ''}
+        ${sent !== undefined ? `<span style="color:${sent > 0 ? 'var(--green)' : sent < 0 ? 'var(--red)' : 'var(--text2)'}">sent: ${sent}</span>` : ''}
+        ${a.tags ? a.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('') : ''}
       </div>
     </div>`;
   }).join('');
@@ -379,91 +326,238 @@ function renderGraph() {
   nodes = new vis.DataSet(graphData.nodes.map(n => ({
     id: n.id,
     label: n.label,
-    title: `<b>${n.title}</b><br/>Type: ${n.type}<br/>Sentiment: ${n.sentiment}<br/>Confidence: ${n.confidence}`,
+    title: `${n.title}\nType: ${n.type}\nSentiment: ${n.sentiment}\nConfidence: ${n.confidence}`,
     color: { background: TYPE_COLORS[n.type] || '#666', border: '#fff', highlight: { background: '#fff', border: TYPE_COLORS[n.type] || '#666' } },
     shape: 'dot',
     size: 8 + Math.abs(n.sentiment) * 12 + n.confidence * 8,
-    borderWidth: 1,
-    borderWidthSelected: 2,
+    borderWidth: 1, borderWidthSelected: 2,
     font: { color: '#f0f6fc', size: 10, strokeWidth: 0 },
     group: n.type,
   })));
 
   edges = new vis.DataSet(graphData.edges.map(e => ({
-    from: e.from,
-    to: e.to,
-    label: e.label,
-    title: e.title,
+    from: e.from, to: e.to, label: e.label, title: e.title,
     color: { color: '#30363d', highlight: '#58a6ff', hover: '#58a6ff' },
     font: { size: 9, color: '#8b949e', strokeWidth: 0 },
-    width: 1,
-    smooth: { type: 'continuous' },
+    width: 1, smooth: { type: 'continuous' },
     arrows: { to: { enabled: true, scaleFactor: 0.5 } },
   })));
 
-  const options = {
+  network = new vis.Network(container, { nodes, edges }, {
     nodes: { scaling: { min: 6, max: 30 } },
     edges: { smooth: { type: 'continuous' } },
-    physics: {
-      enabled: true,
-      solver: 'forceAtlas2Based',
+    physics: { enabled: true, solver: 'forceAtlas2Based',
       forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.005, springLength: 180, springConstant: 0.02, damping: 0.4 },
-      stabilization: { iterations: 100 },
-    },
+      stabilization: { iterations: 100 } },
     interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: true },
     groups: Object.fromEntries(Object.entries(TYPE_COLORS).map(([k, v]) => [k, { color: { background: v, border: '#fff' } }])),
-  };
-
-  network = new vis.Network(container, { nodes, edges }, options);
+  });
 
   network.on('click', params => {
     if (params.nodes.length > 0) {
-      const nodeId = params.nodes[0];
-      const nodeData = graphData.nodes.find(n => n.id === nodeId);
-      if (nodeData) showTooltip(nodeData);
-    } else {
-      hideTooltip();
+      openDetailOverlay(params.nodes[0]);
+    } else if (!overlayOpen) {
+      // clicking empty space clears selection but not overlay if overlay is up
     }
   });
-
-  network.on('doubleClick', params => {
-    if (params.nodes.length > 0) {
-      focusNode(params.nodes[0]);
-    }
-  });
-}
-
-function showTooltip(node) {
-  const tooltip = document.getElementById('graphTooltip');
-  const tags = node.tags ? node.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('') : '';
-  tooltip.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:start;gap:12px;">
-      <div><b>${node.title}</b></div>
-      <span class="type-badge badge-${node.type}">${node.type}</span>
-    </div>
-    <div style="font-size:11px;color:var(--text2);margin-top:4px;">
-      ${node.author ? `${node.author} · ` : ''}${node.date ? new Date(node.date).toLocaleDateString() : ''}
-    </div>
-    <div style="margin-top:6px;display:flex;gap:12px;font-size:11px;">
-      <span>Sentiment: <span style="color:${node.sentiment > 0 ? 'var(--green)' : node.sentiment < 0 ? 'var(--red)' : 'var(--text2)'}">${node.sentiment}</span></span>
-      <span>Confidence: <span style="color:var(--accent)">${node.confidence}</span></span>
-    </div>
-    ${tags ? `<div style="margin-top:4px;">${tags}</div>` : ''}
-  `;
-  tooltip.classList.add('visible');
-}
-
-function hideTooltip() {
-  document.getElementById('graphTooltip').classList.remove('visible');
 }
 
 function focusNode(id) {
   if (!network) return;
   network.focus(id, { scale: 1.5, animation: true });
-  const nodeData = graphData?.nodes.find(n => n.id === id);
-  if (nodeData) showTooltip(nodeData);
   network.selectNodes([id]);
+  openDetailOverlay(id);
 }
+
+async function openDetailOverlay(id) {
+  overlayOpen = true;
+  const overlay = document.getElementById('detailOverlay');
+  overlay.classList.add('visible');
+
+  const header = document.getElementById('overlayHeader');
+  const body = document.getElementById('overlayBody');
+  header.innerHTML = '<div style="display:flex;align-items:center;gap:12px;"><i class="fas fa-spinner fa-spin" style="color:var(--text2)"></i><span style="color:var(--text2);font-size:13px;">Loading...</span></div>';
+  body.innerHTML = '';
+
+  try {
+    const [detailRes, similarRes] = await Promise.all([
+      fetch(`${API}/artifacts/${id}`),
+      fetch(`${API}/artifacts/${id}/similar`),
+    ]);
+    const detail = await detailRes.json();
+    const similar = await similarRes.json();
+
+    const nodeData = graphData?.nodes.find(n => n.id === id);
+    const sent = nodeData?.sentiment ?? 0;
+    const conf = nodeData?.confidence ?? 0;
+    const sentColor = sent > 0.2 ? 'var(--green)' : sent < -0.2 ? 'var(--red)' : 'var(--text2)';
+
+    // Build an in-memory map for sim items
+    const simMap = {};
+    (similar.items || []).forEach(s => { simMap[s.id] = s; });
+
+    header.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
+            <span class="type-badge badge-${detail.artifact_type}">${detail.artifact_type}</span>
+            <span style="font-size:11px;color:var(--text2);">${detail.author || ''}${detail.date_published ? ' · ' + new Date(detail.date_published).toLocaleDateString() : ''}</span>
+          </div>
+          <h2 style="font-size:16px;font-weight:600;line-height:1.3;">${detail.title}</h2>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div class="sentiment-bar" style="margin-bottom:4px;">
+            <span style="font-size:11px;color:var(--text2);">Sentiment</span>
+            <div class="bar-track" style="width:80px;">
+              <div class="bar-fill" style="width:${(sent + 1) / 2 * 100}%;background:${sentColor};"></div>
+            </div>
+            <span style="font-size:12px;color:${sentColor};font-weight:600;">${sent.toFixed(2)}</span>
+          </div>
+          <div class="confidence-ring">
+            <span style="font-size:11px;color:var(--text2);">Confidence</span>
+            <span style="font-size:12px;color:var(--accent);font-weight:600;">${(conf * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    let html = '';
+
+    // Description
+    if (detail.description) {
+      html += `
+        <div class="overlay-section">
+          <h4><i class="fas fa-align-left"></i> Description</h4>
+          <p>${detail.description}${detail.content && !detail.content.startsWith('CONCEPT:') ? '&hellip;' : ''}</p>
+        </div>`;
+    }
+
+    // Source link — prominent button
+    if (detail.url) {
+      html += `<div class="overlay-section">
+        <h4><i class="fas fa-link"></i> Source</h4>
+        <a class="source-btn" href="${detail.url}" target="_blank" rel="noopener">
+          <i class="fas fa-external-link-alt"></i> Open Source
+          <span style="font-weight:400;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${detail.url}</span>
+        </a>
+        ${detail.source ? `<span style="display:inline-block;margin-left:8px;font-size:11px;color:var(--text2);">via ${detail.source}</span>` : ''}
+      </div>`;
+    }
+
+    // Diarized concepts (CONCEPT: blocks in content)
+    const isDiarized = detail.content && detail.content.includes('CONCEPT:');
+    if (isDiarized) {
+      const blocks = detail.content.split('\n\n').filter(b => b.startsWith('CONCEPT:'));
+      html += `<div class="overlay-section"><h4><i class="fas fa-microphone-alt"></i> Diarized Concepts (${blocks.length})</h4>`;
+      blocks.forEach(block => {
+        const nl = block.indexOf('\n');
+        const title = nl > 0 ? block.substring(8, nl).trim() : block.substring(8).trim();
+        const body = nl > 0 ? block.substring(nl + 1).trim() : '';
+        html += `<div class="concept-card">
+          <div class="concept-title"><i class="fas fa-lightbulb" style="font-size:10px;margin-right:4px;"></i>${title}</div>
+          ${body ? `<div class="concept-body">${body}</div>` : ''}
+        </div>`;
+      });
+      html += `</div>`;
+    } else if (detail.content && !detail.content.startsWith('CONCEPT:')) {
+      // Plain content (e.g., full paper abstract)
+      html += `
+        <div class="overlay-section">
+          <h4><i class="fas fa-file-alt"></i> Full Summary</h4>
+          <p style="font-size:12px;line-height:1.6;white-space:pre-wrap;">${detail.content}</p>
+        </div>`;
+    }
+
+    // Tags
+    if (detail.tags) {
+      const tags = detail.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('');
+      html += `<div class="overlay-section"><h4><i class="fas fa-tags"></i> Tags</h4><div>${tags}</div></div>`;
+    }
+
+    // Sentiments
+    if (detail.sentiments && detail.sentiments.length > 0) {
+      html += `<div class="overlay-section"><h4><i class="fas fa-chart-line"></i> Sentiment Scores</h4>`;
+      detail.sentiments.forEach(s => {
+        const c = s.score > 0.2 ? 'var(--green)' : s.score < -0.2 ? 'var(--red)' : 'var(--text2)';
+        html += `<div style="font-size:12px;display:flex;gap:8px;align-items:center;margin-bottom:2px;">
+          <span style="color:${c};font-weight:600;">${s.score.toFixed(2)}</span>
+          <span style="color:var(--text2);">${s.label}${s.source ? ' · ' + s.source : ''}</span>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Projections
+    if (detail.projections && detail.projections.length > 0) {
+      const pColors = { utopian: 'var(--green)', dystopian: 'var(--red)', cautionary: 'var(--orange)', accelerationist: 'var(--purple)', neutral: 'var(--text2)' };
+      html += `<div class="overlay-section"><h4><i class="fas fa-bullseye"></i> Projections</h4>`;
+      detail.projections.forEach(p => {
+        html += `<div class="proj-card">
+          <div class="proj-type" style="color:${pColors[p.type] || 'var(--text2)'};">${p.type} · confidence: ${(p.confidence * 100).toFixed(0)}%${p.timeframe ? ' · ' + p.timeframe : ''}</div>
+          ${p.summary ? `<div class="proj-meta">${p.summary}</div>` : ''}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Relationships
+    if (detail.relationships && detail.relationships.length > 0) {
+      const dirIcons = { outgoing: 'fa-arrow-right', incoming: 'fa-arrow-left' };
+      html += `<div class="overlay-section"><h4><i class="fas fa-project-diagram"></i> Graph Connections (${detail.relationships.length})</h4>`;
+      detail.relationships.forEach(r => {
+        const label = r.direction === 'outgoing' ? r.target_title : r.source_title;
+        const tag = r.direction === 'outgoing' ? `→ ${r.type}` : `${r.type} ←`;
+        const linkedId = r.direction === 'outgoing' ? r.target_id : r.source_id;
+        html += `<div class="rel-item" style="cursor:pointer;" onclick="closeOverlay();focusNode(${linkedId})">
+          <i class="fas ${dirIcons[r.direction]}" style="color:var(--text2);font-size:10px;"></i>
+          <span class="rel-type">${tag}</span>
+          <span>${label}</span>
+          ${r.description ? `<span style="color:var(--text2);font-size:10px;">— ${r.description}</span>` : ''}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Similar artifacts — enhanced with score rings and tag overlap
+    if (similar.items && similar.items.length > 0) {
+      html += `<div class="overlay-section"><h4><i class="fas fa-search"></i> Similar Artifacts (${similar.items.length})</h4>`;
+      similar.items.forEach(s => {
+        const pct = Math.round(s.similarity * 100);
+        const scoreColor = pct >= 60 ? 'var(--green)' : pct >= 35 ? 'var(--orange)' : 'var(--text2)';
+        const sharedTags = s.shared_tags || [];
+        html += `<div class="similar-item" onclick="closeOverlay();focusNode(${s.id})">
+          <div class="sim-item-row">
+            <div class="sim-score-ring" style="background:${scoreColor}20;color:${scoreColor};border:2px solid ${scoreColor};">${pct}%</div>
+            <div style="flex:1;min-width:0;">
+              <div>
+                <span class="type-badge badge-${s.artifact_type}">${s.artifact_type}</span>
+                ${s.title}
+              </div>
+              <div class="sim-reasons">${s.reasons.join(' · ')}</div>
+              ${sharedTags.length > 0 ? `<div class="sim-tags">${sharedTags.slice(0, 5).map(t => `<span class="tag">${t}</span>`).join('')}${sharedTags.length > 5 ? `<span class="tag" style="color:var(--text2);">+${sharedTags.length - 5}</span>` : ''}</div>` : ''}
+            </div>
+            <button class="btn btn-sm" style="flex-shrink:0;background:var(--bg3);border:1px solid var(--border);color:var(--text2);" onclick="event.stopPropagation();closeOverlay();focusNode(${s.id})" title="Show in graph"><i class="fas fa-project-diagram"></i></button>
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    body.innerHTML = html;
+
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load details</div>`;
+  }
+}
+
+function closeOverlay() {
+  overlayOpen = false;
+  document.getElementById('detailOverlay').classList.remove('visible');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && overlayOpen) closeOverlay();
+});
 
 function filterGraph(typeFilter, searchQuery) {
   if (!network || !graphData) return;
@@ -485,10 +579,7 @@ function filterGraph(typeFilter, searchQuery) {
 function zoomIn() { network?.zoomIn(0.2); }
 function zoomOut() { network?.zoomOut(0.2); }
 function fitGraph() { network?.fit({ animation: true }); }
-function togglePhysics() {
-  physicsEnabled = !physicsEnabled;
-  network?.setOptions({ physics: { enabled: physicsEnabled } });
-}
+function togglePhysics() { physicsEnabled = !physicsEnabled; network?.setOptions({ physics: { enabled: physicsEnabled } }); }
 
 function renderSentimentChart(data) {
   const ctx = document.getElementById('sentimentChart').getContext('2d');
@@ -497,12 +588,9 @@ function renderSentimentChart(data) {
   const counts = [0, 0, 0, 0, 0];
   const colors = ['#f85149', '#d29922', '#8b949e', '#3fb950', '#56d4dd'];
   allArtifacts.forEach(a => {
-    if (a.sentiment !== undefined) {
-      if (a.sentiment <= -0.6) counts[0]++;
-      else if (a.sentiment <= -0.2) counts[1]++;
-      else if (a.sentiment < 0.2) counts[2]++;
-      else if (a.sentiment < 0.6) counts[3]++;
-      else counts[4]++;
+    const s = a.sentiment;
+    if (s !== undefined) {
+      if (s <= -0.6) counts[0]++; else if (s <= -0.2) counts[1]++; else if (s < 0.2) counts[2]++; else if (s < 0.6) counts[3]++; else counts[4]++;
     }
   });
   sentimentChartInstance = new Chart(ctx, {
@@ -518,10 +606,10 @@ function renderConfidenceChart(data) {
   const projData = data.projections.by_type || {};
   const labels = Object.keys(projData);
   const vals = Object.values(projData);
-  const colors = { utopian: '#3fb950', dystopian: '#f85149', cautionary: '#d29922', accelerationist: '#bc8cff', neutral: '#8b949e' };
+  const c = { utopian: '#3fb950', dystopian: '#f85149', cautionary: '#d29922', accelerationist: '#bc8cff', neutral: '#8b949e' };
   confidenceChartInstance = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ data: vals, backgroundColor: labels.map(l => colors[l] || '#666'), borderRadius: 3 }] },
+    data: { labels, datasets: [{ data: vals, backgroundColor: labels.map(l => c[l] || '#666'), borderRadius: 3 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } },
   });
 }
@@ -530,8 +618,7 @@ async function ingestArtifact() {
   const title = document.getElementById('fTitle').value.trim();
   if (!title) { showNotif('Title is required', 'error'); return; }
   const payload = {
-    title,
-    artifact_type: document.getElementById('fType').value,
+    title, artifact_type: document.getElementById('fType').value,
     author: document.getElementById('fAuthor').value.trim() || null,
     url: document.getElementById('fUrl').value.trim() || null,
     description: document.getElementById('fDesc').value.trim() || null,
@@ -550,17 +637,14 @@ async function ingestArtifact() {
     showNotif('Artifact ingested successfully', 'success');
     document.querySelectorAll('#ingestPanel input, #ingestPanel textarea').forEach(el => el.value = '');
     await loadData();
-  } catch (e) {
-    showNotif('Error ingesting artifact', 'error');
-  }
+  } catch (e) { showNotif('Error ingesting artifact', 'error'); }
 }
 
 function populateRelateSelects() {
   const src = document.getElementById('relSource');
   const tgt = document.getElementById('relTarget');
   const opts = allArtifacts.map(a => `<option value="${a.id}">${a.title.substring(0, 60)}</option>`).join('');
-  src.innerHTML = opts;
-  tgt.innerHTML = opts;
+  src.innerHTML = opts; tgt.innerHTML = opts;
 }
 
 async function createRelationship() {
@@ -568,25 +652,33 @@ async function createRelationship() {
   const target_id = parseInt(document.getElementById('relTarget').value);
   const relationship_type = document.getElementById('relType').value;
   const description = document.getElementById('relDesc').value.trim() || null;
-  if (source_id === target_id) { showNotif('Cannot relate an artifact to itself', 'error'); return; }
+  if (source_id === target_id) { showNotif('Cannot relate to itself', 'error'); return; }
   try {
     const res = await fetch(`${API}/relationships`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source_id, target_id, relationship_type, description }),
     });
-    if (!res.ok) throw new Error('Failed to create relationship');
+    if (!res.ok) throw new Error('Failed');
     showNotif('Relationship created', 'success');
     document.getElementById('relDesc').value = '';
     await loadGraph();
-  } catch (e) {
-    showNotif('Error creating relationship', 'error');
-  }
+  } catch (e) { showNotif('Error creating relationship', 'error'); }
+}
+
+async function reseedDatabase() {
+  if (!confirm('This will delete all data and re-seed. Continue?')) return;
+  try {
+    const res = await fetch(`${API}/reseed`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    showNotif(`Database re-seeded: ${data.seeded} artifacts`, 'success');
+    await loadData();
+  } catch (e) { showNotif('Error re-seeding database', 'error'); }
 }
 
 function showNotif(msg, type) {
   const el = document.getElementById('notif');
-  el.textContent = msg;
-  el.className = 'notif ' + type;
+  el.textContent = msg; el.className = 'notif ' + type;
   setTimeout(() => { el.className = 'notif'; }, 3000);
 }
 

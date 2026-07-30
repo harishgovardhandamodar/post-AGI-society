@@ -137,34 +137,58 @@ def scrape_nitter_tweets(account: str) -> List[dict]:
     return []
 
 
-def scrape_arxiv_papers(query: str = "AGI+alignment+superintelligence+artificial+general+intelligence+AI+safety", max_results: int = 15) -> List[dict]:
-    url = f"http://export.arxiv.org/api/query?search_query=all:{query}&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
-    try:
-        import xml.etree.ElementTree as ET
-        resp = requests.get(url, timeout=20)
-        root = ET.fromstring(resp.content)
-        ns = {"a": "http://www.w3.org/2005/Atom"}
-        items = []
-        for entry in root.findall("a:entry", ns):
-            title = entry.find("a:title", ns)
-            summary = entry.find("a:summary", ns)
-            published = entry.find("a:published", ns)
-            link = entry.find("a:id", ns)
-            authors = entry.findall("a:author/a:name", ns)
-            item = {
-                "title": _clean_tag(title.text) if title is not None else "",
-                "url": link.text.strip() if link is not None else "",
-                "description": _clean_tag(summary.text[:500]) if summary is not None else "",
-                "date_published": _parse_iso_date(published.text.strip()) if published is not None else None,
-                "source": "arXiv",
-                "author": ", ".join(a.text for a in authors) if authors else "Unknown",
-            }
-            if is_relevant(item["title"], item["description"]):
-                items.append(item)
-        return items
-    except Exception as e:
-        print(f"arXiv error: {e}")
-        return []
+ARXIV_QUERIES = [
+    "AGI+alignment+superintelligence+artificial+general+intelligence+AI+safety",
+    "mechanistic+interpretability+sparse+autoencoder+transformer+circuits",
+    "scaling+law+large+language+model+compute+optimal",
+    "reinforcement+learning+human+feedback+preference+optimization",
+    "AI+governance+regulation+policy+existential+risk+xrisk",
+    "superalignment+weak+to+strong+scalable+oversight",
+    "AI+capability+emergence+reasoning+planning+LLM+agent",
+]
+
+def scrape_arxiv_papers(max_results: int = 30) -> List[dict]:
+    seen_ids = set()
+    all_items = []
+    for query in ARXIV_QUERIES:
+        if len(all_items) >= max_results:
+            break
+        url = f"http://export.arxiv.org/api/query?search_query=all:{query}&start=0&max_results={max_results // len(ARXIV_QUERIES) + 1}&sortBy=submittedDate&sortOrder=descending"
+        try:
+            import xml.etree.ElementTree as ET
+            resp = requests.get(url, timeout=20)
+            root = ET.fromstring(resp.content)
+            ns = {"a": "http://www.w3.org/2005/Atom"}
+            for entry in root.findall("a:entry", ns):
+                if len(all_items) >= max_results:
+                    break
+                link = entry.find("a:id", ns)
+                paper_id = link.text.strip() if link is not None else ""
+                if paper_id in seen_ids:
+                    continue
+                seen_ids.add(paper_id)
+                title = entry.find("a:title", ns)
+                summary = entry.find("a:summary", ns)
+                published = entry.find("a:published", ns)
+                authors = entry.findall("a:author/a:name", ns)
+                categories = entry.findall("a:category", ns)
+                cat_terms = [c.get("term", "") for c in categories]
+                item = {
+                    "title": _clean_tag(title.text) if title is not None else "",
+                    "url": paper_id,
+                    "description": _clean_tag(summary.text[:600]) if summary is not None else "",
+                    "content": _clean_tag(summary.text) if summary is not None else "",
+                    "tags": ", ".join(t for t in cat_terms if not t.startswith("cs.")),  # retain non-cs category labels for relevance
+                    "date_published": _parse_iso_date(published.text.strip()) if published is not None else None,
+                    "source": "arXiv",
+                    "author": ", ".join(a.text for a in authors) if authors else "Unknown",
+                }
+                if is_relevant(item["title"], item["description"]):
+                    all_items.append(item)
+        except Exception as e:
+            print(f"arXiv error for query '{query}': {e}")
+            continue
+    return all_items
 
 
 def _clean_tag(text: str) -> str:
@@ -228,8 +252,10 @@ def run_ingestion(db: Session) -> int:
             artifact_type="paper",
             url=item["url"],
             description=item["description"],
+            content=item.get("content"),
             source=item.get("source", "arXiv"),
             author=item.get("author"),
+            tags=item.get("tags"),
             date_published=item["date_published"],
         )
         db.add(artifact)
