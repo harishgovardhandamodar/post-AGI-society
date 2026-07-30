@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.orm import Session
 
-from .models import Artifact, Sentiment
+from .models import Artifact, Sentiment, Projection, Relationship
 
 RSS_FEEDS = [
     {"url": "https://news.ycombinator.com/rss", "source": "Hacker News", "type": "news"},
@@ -198,6 +198,110 @@ def _clean_tag(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
 
 
+def extract_tags(text: str) -> str:
+    found = set()
+    for kw in KNOWN_KEYWORDS:
+        if kw.lower() in text.lower():
+            tag = kw.lower().replace(" ", "-")
+            found.add(tag)
+    return ", ".join(sorted(found))
+
+
+TIMELINE_RE = re.compile(
+    r"(by\s+20\d{2}|within\s+(the\s+)?next\s+\d+|in\s+\d+\s*(year|decade)s?|"
+    r"by\s+\d{4}|20\d{2}s|around\s+20\d{2})",
+    re.IGNORECASE,
+)
+
+FORECAST_RE = re.compile(
+    r"\b(predict|forecast|estimate|projected|likely|unlikely|probability|"
+    r"expected|on track|timeline|will arrive|will achieve|could reach)\b",
+    re.IGNORECASE,
+)
+
+
+def detect_projection(title: str, description: str, sentiment_score: float) -> Optional[dict]:
+    text = f"{title} {description}"
+    timeline_match = TIMELINE_RE.search(text)
+    forecast_match = FORECAST_RE.search(text)
+    if not timeline_match and not forecast_match:
+        return None
+
+    timeframe = timeline_match.group(1) if timeline_match else "unspecified"
+
+    if sentiment_score > 0.3:
+        proj_type = "utopian" if sentiment_score > 0.6 else "accelerationist"
+    elif sentiment_score < -0.3:
+        proj_type = "dystopian" if sentiment_score < -0.6 else "cautionary"
+    else:
+        proj_type = "neutral"
+
+    confidence = min(0.7, max(0.3, abs(sentiment_score)))
+    if forecast_match:
+        confidence = min(0.8, confidence + 0.1)
+
+    summary = text[:200].rsplit(".", 1)[0] + "."
+    if len(summary) > 200:
+        summary = summary[:197] + "..."
+
+    return {
+        "projection_type": proj_type,
+        "confidence": round(confidence, 2),
+        "timeframe": timeframe,
+        "summary": summary,
+    }
+
+
+def auto_relate(new_artifact: Artifact, db: Session):
+    new_tags = set(t.strip().lower() for t in (new_artifact.tags or "").split(",") if t.strip())
+    others = db.query(Artifact).filter(Artifact.id != new_artifact.id).all()
+    count = 0
+    for other in others:
+        if count >= 8:
+            break
+        if _relationship_exists(db, new_artifact.id, other.id):
+            continue
+        score = 0
+        rel_type = None
+        desc = None
+
+        o_tags = set(t.strip().lower() for t in (other.tags or "").split(",") if t.strip())
+        overlap = new_tags & o_tags
+        if len(overlap) >= 2:
+            score = max(score, 0.6)
+            rel_type = "similar_to"
+            desc = f"Shared tags: {', '.join(list(overlap)[:4])}"
+
+        if (new_artifact.author and other.author
+                and new_artifact.author.lower() == other.author.lower()):
+            if score < 0.8:
+                score = 0.8
+                rel_type = "similar_to"
+                desc = "Same author"
+
+        if other.url and new_artifact.description and other.title.lower() in new_artifact.description.lower():
+            if score < 0.7:
+                score = 0.7
+                rel_type = "references"
+                desc = f"References: {other.title[:60]}"
+
+        if score >= 0.6:
+            db.add(Relationship(
+                source_id=new_artifact.id,
+                target_id=other.id,
+                relationship_type=rel_type,
+                description=desc,
+            ))
+            count += 1
+
+
+def _relationship_exists(db: Session, src: int, tgt: int) -> bool:
+    return db.query(Relationship).filter(
+        ((Relationship.source_id == src) & (Relationship.target_id == tgt))
+        | ((Relationship.source_id == tgt) & (Relationship.target_id == src))
+    ).count() > 0
+
+
 def run_ingestion(db: Session) -> int:
     ingested = 0
     seen_urls = {a.url for a in db.query(Artifact).filter(Artifact.url.isnot(None)).all() if a.url}
@@ -210,17 +314,24 @@ def run_ingestion(db: Session) -> int:
             if not is_relevant(item["title"], item["description"]):
                 continue
             sentiment_score = extract_sentiment_from_text(f"{item['title']} {item['description']}")
+            combined = f"{item['title']} {item.get('description','')}"
+            tags = extract_tags(combined)
             artifact = Artifact(
                 title=item["title"][:500],
                 artifact_type=feed["type"],
                 url=item["url"],
                 description=item["description"],
                 source=feed["source"],
+                tags=tags,
                 date_published=item["date_published"],
             )
             db.add(artifact)
             db.flush()
             db.add(Sentiment(artifact_id=artifact.id, score=sentiment_score, label=_label_from_score(sentiment_score), source="auto-scraper"))
+            proj = detect_projection(item["title"], item.get("description", ""), sentiment_score)
+            if proj:
+                db.add(Projection(artifact_id=artifact.id, **proj))
+            auto_relate(artifact, db)
             seen_urls.add(item["url"])
             ingested += 1
 
@@ -230,6 +341,7 @@ def run_ingestion(db: Session) -> int:
             if not tweet["url"] or tweet["url"] in seen_urls:
                 continue
             sentiment_score = extract_sentiment_from_text(tweet["description"])
+            tags = extract_tags(tweet["description"])
             artifact = Artifact(
                 title=tweet["title"][:500],
                 artifact_type="tweet",
@@ -237,11 +349,16 @@ def run_ingestion(db: Session) -> int:
                 description=tweet["description"],
                 source=tweet.get("source", f"@{account}"),
                 author=tweet.get("author", account),
+                tags=tags,
                 date_published=tweet["date_published"],
             )
             db.add(artifact)
             db.flush()
             db.add(Sentiment(artifact_id=artifact.id, score=sentiment_score, label=_label_from_score(sentiment_score), source="auto-nitter"))
+            proj = detect_projection(tweet["title"], tweet["description"], sentiment_score)
+            if proj:
+                db.add(Projection(artifact_id=artifact.id, **proj))
+            auto_relate(artifact, db)
             seen_urls.add(tweet["url"])
             ingested += 1
 
@@ -250,6 +367,10 @@ def run_ingestion(db: Session) -> int:
         if not item["url"] or item["url"] in seen_urls:
             continue
         sentiment_score = extract_sentiment_from_text(f"{item['title']} {item['description']}")
+        combined = f"{item['title']} {item.get('description','')}"
+        kw_tags = extract_tags(combined)
+        existing_tags = item.get("tags", "")
+        merged_tags = (existing_tags + ", " + kw_tags) if existing_tags and kw_tags else (existing_tags or kw_tags)
         artifact = Artifact(
             title=item["title"][:500],
             artifact_type="paper",
@@ -258,12 +379,16 @@ def run_ingestion(db: Session) -> int:
             content=item.get("content"),
             source=item.get("source", "arXiv"),
             author=item.get("author"),
-            tags=item.get("tags"),
+            tags=merged_tags,
             date_published=item["date_published"],
         )
         db.add(artifact)
         db.flush()
         db.add(Sentiment(artifact_id=artifact.id, score=sentiment_score, label=_label_from_score(sentiment_score), source="auto-arxiv"))
+        proj = detect_projection(item["title"], item.get("description", ""), sentiment_score)
+        if proj:
+            db.add(Projection(artifact_id=artifact.id, **proj))
+        auto_relate(artifact, db)
         seen_urls.add(item["url"])
         ingested += 1
 
