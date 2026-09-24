@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 *.db
 data/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
