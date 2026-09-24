@@ -62,6 +62,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .graph-controls { position: absolute; top: 12px; right: 12px; z-index: 10; display: flex; flex-direction: column; gap: 4px; }
 .graph-controls button { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); cursor: pointer; font-size: 13px; }
 .graph-controls button:hover { background: var(--bg3); }
+.cluster-bar { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; gap: 0; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; align-items: center; }
+.cluster-btn { padding: 5px 12px; border-radius: 6px; border: none; background: transparent; color: var(--text2); cursor: pointer; font-size: 11px; font-weight: 500; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cluster-btn:hover { color: var(--text); background: var(--bg3); }
+.cluster-btn.active { background: var(--accent); color: var(--bg); }
+.cluster-count { font-size: 10px; color: var(--text2); padding: 0 8px 0 4px; white-space: nowrap; }
 .form-group { margin-bottom: 10px; }
 .form-group label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 3px; }
 .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; }
@@ -102,6 +107,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .overlay-section h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 6px; font-weight: 600; }
 .overlay-section p { font-size: 13px; line-height: 1.5; color: var(--text); }
 .overlay-section .url-link { font-size: 12px; color: var(--accent); word-break: break-all; }
+/* Media scale-to-fit: scraped descriptions may embed full-size images */
+.overlay-body img {
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 60vh;
+  display: block;
+  margin: 8px auto;
+  border-radius: 8px;
+  object-fit: contain;
+}
+.overlay-body video, .overlay-body iframe {
+  max-width: 100% !important;
+  display: block;
+  margin: 8px auto;
+  border-radius: 8px;
+}
+.overlay-body figure { max-width: 100%; margin: 8px auto; text-align: center; }
+.overlay-body figcaption { font-size: 11px; color: var(--text2); margin-top: 4px; }
+.overlay-body table { display: block; max-width: 100%; overflow-x: auto; }
+.overlay-body pre { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.overlay-section p, .concept-card .concept-body { overflow-wrap: anywhere; }
 .similar-item { padding: 8px 10px; background: var(--bg3); border-radius: 6px; margin-bottom: 4px; cursor: pointer; border: 1px solid transparent; font-size: 12px; transition: all 0.15s; }
 .similar-item:hover { border-color: var(--accent); }
 .similar-item .sim-score { float: right; font-size: 11px; color: var(--text2); }
@@ -187,6 +213,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       </div>
       <input class="search-box" id="searchInput" placeholder="Search artifacts..." />
       <button id="fetchBtn" onclick="fetchFromWeb()" style="background:var(--accent);border:none;border-radius:6px;color:var(--bg);cursor:pointer;padding:6px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="fas fa-cloud-download-alt"></i> <span id="fetchLabel">Fetch</span></button>
+      <button onclick="window.open('http://'+location.hostname+':8204','_blank')" title="Open Agentic Knowledge Mapper console" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;padding:6px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="fas fa-robot" style="color:var(--teal);"></i> Agent Console</button>
       <button id="themeToggle" onclick="toggleTheme()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;padding:6px 10px;font-size:13px;display:flex;align-items:center;gap:6px;"><i id="themeIcon" class="fas fa-moon"></i><span id="themeLabel">Dark</span></button>
       </div>
     </div>
@@ -205,6 +232,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
     <div class="main-content">
       <div id="graphContainer" style="height:100%;position:relative;">
+        <div class="cluster-bar" title="Cluster graph nodes; centroid = group label">
+          <button class="cluster-btn active" data-cluster="off" onclick="setClusterMode('off')" title="No clustering"><i class="fas fa-circle"></i> Off</button>
+          <button class="cluster-btn" data-cluster="category" onclick="setClusterMode('category')" title="Cluster by artifact category (type)"><i class="fas fa-layer-group"></i> Category</button>
+          <button class="cluster-btn" data-cluster="similarity" onclick="setClusterMode('similarity')" title="Cluster by tag similarity (Jaccard)"><i class="fas fa-hubspot"></i> Similarity</button>
+          <span class="cluster-count" id="clusterCount"></span>
+        </div>
         <div class="graph-controls">
           <button onclick="zoomIn()" title="Zoom in"><i class="fas fa-plus"></i></button>
           <button onclick="zoomOut()" title="Zoom out"><i class="fas fa-minus"></i></button>
@@ -299,6 +332,10 @@ let physicsEnabled = true;
 let sentimentChartInstance = null;
 let confidenceChartInstance = null;
 let overlayOpen = false;
+let clusterMode = 'off';
+let clusterIds = [];
+let clusterCache = { category: null, similarity: null };
+const SIMILARITY_THRESHOLD = 0.25;
 
 const TYPE_COLORS = {
   news: '#58a6ff', paper: '#3fb950', book: '#f0b429', essay: '#bc8cff',
@@ -339,25 +376,36 @@ function applyTheme(theme) {
     const edgeHighlight = isLight ? '#0969da' : '#58a6ff';
     const fontColor = isLight ? '#1f2328' : '#ffffff';
     const text2 = isLight ? '#656d76' : '#b0b8c4';
+    const edgeUpdates = [];
     edges.forEach(e => {
-      edges.update({
+      edgeUpdates.push({
         id: e.id,
         color: { color: edgeColor, highlight: edgeHighlight, hover: edgeHighlight },
         font: { size: 9, color: text2, strokeWidth: 0 },
       });
     });
+    edges.update(edgeUpdates);
+    const nodeUpdates = [];
     nodes.forEach(n => {
       const type = graphData.nodes.find(g => g.id === n.id)?.type || 'news';
       const bg = TYPE_COLORS[type] || '#666';
       const glow = TYPE_GLOWS[type] || 'rgba(255,255,255,0.2)';
-      nodes.update({
+      nodeUpdates.push({
         id: n.id,
         color: { background: bg, border: bg, highlight: { background: isLight ? '#1f2328' : '#fff', border: '#fff' }, hover: { background: bg, border: '#fff' } },
         font: { color: fontColor, size: 11, strokeWidth: 1, strokeColor: isLight ? '#ffffff' : '#0d1117' },
         shadow: { enabled: true, color: glow, size: 16, x: 0, y: 0 },
       });
     });
+    nodes.update(nodeUpdates);
     network.redraw();
+    if (clusterMode !== 'off' && clusterCache[clusterMode]) {
+      const mode = clusterMode;
+      openAllClusters();
+      clusterMode = mode;
+      updateClusterButtons();
+      applyClusters(clusterCache[mode].clusters || [], mode);
+    }
   }
   if (trendDataCache) renderTrendChart(trendDataCache);
   if (sentimentChartInstance) sentimentChartInstance.update();
@@ -389,12 +437,19 @@ function initTabs() {
 }
 
 async function loadData() {
-  await Promise.all([loadArtifacts(), loadGraph(), loadIngestStatus()]);
-  const statsData = await loadStats();
-  renderSentimentChart(statsData);
-  renderConfidenceChart(statsData);
+  // Fire all fetches concurrently; graph renders on arrival instead of
+  // waiting for stats. Filters/charts build once their data is in.
+  const graphP = loadGraph();
+  const artifactsP = loadArtifacts();
+  const statsP = loadStats();
+  const statusP = loadIngestStatus();
+  await Promise.all([graphP, artifactsP]);
   buildTypeFilters();
   filterArtifacts();
+  const statsData = await statsP;
+  renderSentimentChart(statsData);
+  renderConfidenceChart(statsData);
+  await statusP;
 }
 
 async function loadIngestStatus() {
@@ -432,6 +487,7 @@ async function loadStats() {
 async function loadGraph() {
   const res = await fetch(`${API}/graph`);
   graphData = await res.json();
+  invalidateClusterCache();
   renderGraph();
 }
 
@@ -527,10 +583,12 @@ function renderGraph() {
   network = new vis.Network(container, { nodes, edges }, {
     nodes: { scaling: { min: 8, max: 40 } },
     edges: { smooth: { type: 'continuous' } },
+    // No upfront stabilization: paint the first frame immediately and let
+    // physics settle live in the background (stabilization blocks on ~1k nodes).
     physics: { enabled: true, solver: 'forceAtlas2Based',
       forceAtlas2Based: { gravitationalConstant: -40, centralGravity: 0.005, springLength: 180, springConstant: 0.02, damping: 0.4 },
-      stabilization: { iterations: 100 } },
-    interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: true },
+      stabilization: false },
+    interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: true, hideEdgesOnDrag: true },
     groups: Object.fromEntries(Object.entries(TYPE_COLORS).map(([k, v]) => [k, {
       color: { background: v, border: v, highlight: { background: '#fff', border: '#fff' } },
       shadow: { enabled: true, color: TYPE_GLOWS[k] || 'rgba(255,255,255,0.2)', size: 16, x: 0, y: 0 },
@@ -539,15 +597,129 @@ function renderGraph() {
 
   network.on('click', params => {
     if (params.nodes.length > 0) {
-      openDetailOverlay(params.nodes[0]);
+      const clicked = params.nodes[0];
+      if (network.isCluster(clicked)) {
+        network.openCluster(clicked);
+        clusterIds = clusterIds.filter(c => c !== clicked);
+        updateClusterCount();
+      } else {
+        openDetailOverlay(clicked);
+      }
     } else if (!overlayOpen) {
       // clicking empty space clears selection but not overlay if overlay is up
     }
   });
+
+  if (clusterMode !== 'off') {
+    const pending = clusterMode;
+    clusterMode = 'off';
+    setClusterMode(pending);
+  }
 }
+
+function updateClusterButtons() {
+  document.querySelectorAll('.cluster-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.cluster === clusterMode);
+  });
+}
+
+function updateClusterCount(n) {
+  const el = document.getElementById('clusterCount');
+  if (!el) return;
+  if (clusterMode === 'off' || !n) { el.textContent = ''; return; }
+  el.textContent = `${n} cluster${n === 1 ? '' : 's'}`;
+}
+
+function openAllClusters() {
+  if (!network) return;
+  [...clusterIds].forEach(cid => {
+    try { if (network.isCluster(cid)) network.openCluster(cid); } catch (e) {}
+  });
+  clusterIds = [];
+  updateClusterCount(0);
+}
+
+async function setClusterMode(mode) {
+  clusterMode = mode;
+  updateClusterButtons();
+  if (!network || !graphData) return;
+  openAllClusters();
+  if (mode === 'off') return;
+  try {
+    let data = clusterCache[mode];
+    if (!data) {
+      let url = `${API}/graph/clusters?mode=${mode}`;
+      if (mode === 'similarity') url += `&threshold=${SIMILARITY_THRESHOLD}`;
+      const res = await fetch(url);
+      data = await res.json();
+      clusterCache[mode] = data;
+    }
+    applyClusters(data.clusters || [], mode);
+  } catch (e) {
+    showNotif('Failed to load clusters', 'error');
+    clusterMode = 'off';
+    updateClusterButtons();
+  }
+}
+
+function applyClusters(clusters, mode) {
+  if (!network || !nodes) return;
+  const visibleIds = new Set();
+  nodes.forEach(n => { if (!n.hidden) visibleIds.add(n.id); });
+  const isLight = document.documentElement.className === 'light';
+  let applied = 0;
+  for (const c of clusters) {
+    const members = (c.member_ids || []).filter(id => visibleIds.has(id) && nodes.get(id));
+    if (members.length < 2) continue;
+    const memberSet = new Set(members);
+    const cid = `cluster:${c.id}`;
+    let bg = '#8b949e';
+    if (mode === 'category') {
+      const t = c.centroid;
+      bg = TYPE_COLORS[t] || '#8b949e';
+    } else {
+      bg = '#8250df';
+    }
+    const size = 22 + Math.min(18, members.length * 2);
+    try {
+      network.cluster({
+        joinCondition: node => memberSet.has(node.id),
+        clusterNodeProperties: {
+          id: cid,
+          label: c.label,
+          title: mode === 'category'
+            ? `Category: ${c.centroid}\n${members.length} artifacts${c.centroid_tags?.length ? '\nTop tags: ' + c.centroid_tags.join(', ') : ''}\nClick to expand`
+            : `Similarity centroid: ${c.centroid}\n${members.length} artifacts\nClick to expand`,
+          shape: 'dot',
+          size,
+          borderWidth: 3,
+          color: { background: bg, border: isLight ? '#1f2328' : '#ffffff', highlight: { background: bg, border: '#fff' }, hover: { background: bg, border: '#fff' } },
+          font: { color: isLight ? '#1f2328' : '#ffffff', size: 12, strokeWidth: 1, strokeColor: isLight ? '#ffffff' : '#0d1117' },
+          shadow: { enabled: true, color: bg + '88', size: 20, x: 0, y: 0 },
+          group: mode === 'category' ? c.centroid : undefined,
+        },
+      });
+      clusterIds.push(cid);
+      applied++;
+    } catch (e) {}
+  }
+  updateClusterCount(applied);
+  if (applied === 0) showNotif(`No ${mode} clusters found (groups < 2)`, 'error');
+}
+
+function invalidateClusterCache() { clusterCache = { category: null, similarity: null }; }
 
 function focusNode(id) {
   if (!network) return;
+  for (const cid of [...clusterIds]) {
+    try {
+      if (network.isCluster(cid) && network.getNodesInCluster(cid).includes(id)) {
+        network.openCluster(cid);
+        clusterIds = clusterIds.filter(c => c !== cid);
+      }
+    } catch (e) {}
+  }
+  updateClusterCount(clusterIds.length);
   network.focus(id, { scale: 1.5, animation: true });
   network.selectNodes([id]);
   openDetailOverlay(id);
@@ -745,6 +917,8 @@ document.addEventListener('keydown', e => {
 
 function filterGraph(typeFilter, searchQuery) {
   if (!network || !graphData) return;
+  const wasClustered = clusterMode !== 'off';
+  if (wasClustered) openAllClusters();
   const visibleIds = new Set();
   graphData.nodes.forEach(n => {
     let show = true;
@@ -752,12 +926,20 @@ function filterGraph(typeFilter, searchQuery) {
     if (searchQuery && !n.title.toLowerCase().includes(searchQuery) && !n.author.toLowerCase().includes(searchQuery)) show = false;
     if (show) visibleIds.add(n.id);
   });
-  nodes.forEach(n => { nodes.update({ id: n.id, hidden: !visibleIds.has(n.id) }); });
+  // Batched into single DataSet calls: one redraw instead of ~5k.
+  const nodeUpdates = [];
+  nodes.forEach(n => { nodeUpdates.push({ id: n.id, hidden: !visibleIds.has(n.id) }); });
+  nodes.update(nodeUpdates);
+  const hiddenFlag = {};
+  nodeUpdates.forEach(u => { hiddenFlag[u.id] = u.hidden; });
+  const edgeUpdates = [];
   edges.forEach(e => {
-    const srcHidden = nodes.get(e.from)?.hidden;
-    const tgtHidden = nodes.get(e.to)?.hidden;
-    edges.update({ id: e.id, hidden: srcHidden || tgtHidden });
+    edgeUpdates.push({ id: e.id, hidden: hiddenFlag[e.from] || hiddenFlag[e.to] });
   });
+  edges.update(edgeUpdates);
+  if (wasClustered && clusterCache[clusterMode]) {
+    applyClusters(clusterCache[clusterMode].clusters || [], clusterMode);
+  }
 }
 
 function zoomIn() { network?.zoomIn(0.2); }

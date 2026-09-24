@@ -239,13 +239,24 @@ def get_graph(db: Session = Depends(get_db)):
     artifacts = db.query(Artifact).all()
     relationships = db.query(Relationship).all()
 
+    # Bulk aggregates in 2 queries (was N+1: 2 queries per artifact).
+    sent_rows = db.query(Sentiment.artifact_id, Sentiment.score).all()
+    sent_sum: dict = defaultdict(float)
+    sent_cnt: dict = defaultdict(int)
+    for aid, score in sent_rows:
+        sent_sum[aid] += score
+        sent_cnt[aid] += 1
+
+    proj_rows = db.query(Projection.artifact_id, Projection.confidence).all()
+    conf_max: dict = defaultdict(float)
+    for aid, conf in proj_rows:
+        if conf > conf_max[aid]:
+            conf_max[aid] = conf
+
     nodes = []
     for a in artifacts:
-        sentiments = db.query(Sentiment).filter(Sentiment.artifact_id == a.id).all()
-        avg_sentiment = sum(s.score for s in sentiments) / len(sentiments) if sentiments else 0
-
-        projections = db.query(Projection).filter(Projection.artifact_id == a.id).all()
-        max_confidence = max((p.confidence for p in projections), default=0)
+        avg_sentiment = sent_sum[a.id] / sent_cnt[a.id] if sent_cnt[a.id] else 0
+        max_confidence = conf_max[a.id]
 
         nodes.append({
             "id": a.id,
@@ -270,6 +281,115 @@ def get_graph(db: Session = Depends(get_db)):
         })
 
     return {"nodes": nodes, "edges": edges}
+
+
+def _parse_tag_set(tags: Optional[str]) -> set:
+    if not tags:
+        return set()
+    return set(t.strip().lower() for t in tags.split(",") if t.strip())
+
+
+def _jaccard(a: set, b: set) -> float:
+    if not a or not b:
+        return 0.0
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
+
+
+@app.get("/api/graph/clusters")
+def get_graph_clusters(
+    mode: str = Query("category", pattern="^(category|similarity)$"),
+    threshold: float = Query(0.25, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+):
+    """Return cluster centroids for the graph view.
+
+    - mode=category: one centroid per artifact_type.
+    - mode=similarity: tag-Jaccard union-find components (size >= 2).
+      Each cluster carries a centroid label derived from shared/common tags.
+    """
+    artifacts = db.query(Artifact).all()
+
+    if mode == "category":
+        grouped: dict = defaultdict(list)
+        for a in artifacts:
+            grouped[a.artifact_type or "unknown"].append(a.id)
+        clusters = []
+        for atype, member_ids in sorted(grouped.items()):
+            # centroid: most frequent tags within this type
+            tag_counts: dict = defaultdict(int)
+            for a in artifacts:
+                if a.id in member_ids:
+                    for t in _parse_tag_set(a.tags):
+                        tag_counts[t] += 1
+            top_tags = sorted(tag_counts, key=lambda t: -tag_counts[t])[:3]
+            clusters.append({
+                "id": f"category:{atype}",
+                "label": f"{atype} ({len(member_ids)})",
+                "mode": "category",
+                "centroid": atype,
+                "centroid_tags": top_tags,
+                "member_ids": sorted(member_ids),
+                "size": len(member_ids),
+            })
+        return {"mode": mode, "clusters": clusters}
+
+    # mode == "similarity": union-find over tag Jaccard similarity
+    ids = [a.id for a in artifacts]
+    tag_map = {a.id: _parse_tag_set(a.tags) for a in artifacts}
+    parent = {i: i for i in ids}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[ry] = rx
+
+    for i in range(len(ids)):
+        for j in range(i + 1, len(ids)):
+            if _jaccard(tag_map[ids[i]], tag_map[ids[j]]) >= threshold:
+                union(ids[i], ids[j])
+
+    groups: dict = defaultdict(list)
+    for i in ids:
+        # only group artifacts that actually have tags; untagged stay solo
+        if not tag_map[i]:
+            continue
+        groups[find(i)].append(i)
+
+    clusters = []
+    for idx, (root, member_ids) in enumerate(sorted(groups.items(), key=lambda kv: -len(kv[1]))):
+        if len(member_ids) < 2:
+            continue
+        # centroid tags: intersection if non-empty else most common
+        sets = [tag_map[m] for m in member_ids]
+        inter = set.intersection(*sets) if sets else set()
+        if inter:
+            centroid_tags = sorted(inter)
+        else:
+            counts: dict = defaultdict(int)
+            for s in sets:
+                for t in s:
+                    counts[t] += 1
+            centroid_tags = sorted(counts, key=lambda t: (-counts[t], t))[:3]
+        centroid_label = ", ".join(centroid_tags[:3]) if centroid_tags else f"group {idx + 1}"
+        clusters.append({
+            "id": f"similarity:{idx}",
+            "label": f"{centroid_label} ({len(member_ids)})",
+            "mode": "similarity",
+            "centroid": centroid_label,
+            "centroid_tags": centroid_tags,
+            "member_ids": sorted(member_ids),
+            "size": len(member_ids),
+        })
+    return {"mode": mode, "threshold": threshold, "clusters": clusters}
 
 
 @app.get("/api/stats")
