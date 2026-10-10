@@ -57,9 +57,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .right-panel-toggle:hover { background: var(--bg3); color: var(--text); }
 .main { overflow: hidden; position: relative; background: var(--graph-bg); display: flex; flex-direction: column; }
 .main-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.main-tab { padding: 10px 20px; font-size: 13px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; transition: all 0.15s; user-select: none; }
+.main-tabs { display: flex; gap: 6px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 8px 12px 0; }
+.main-tab { padding: 8px 16px 10px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text2); border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; transition: all 0.15s; user-select: none; display: flex; align-items: center; gap: 7px; }
 .main-tab:hover { color: var(--text); background: var(--bg3); }
-.main-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.main-tab.active { color: var(--accent); background: var(--graph-bg); border-color: var(--border); }
+.main-tab .cnt { font-size: 10px; font-weight: 700; background: var(--bg3); color: var(--text2); border-radius: 9px; padding: 1px 7px; font-variant-numeric: tabular-nums; }
+.main-tab.active .cnt { background: rgba(88,166,255,.15); color: var(--accent); }
 .main-content { flex: 1; min-height: 0; position: relative; }
 .panel { margin-bottom: 20px; flex-shrink: 0; }
 .sidebar-left .panel:last-child { flex-shrink: 1; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -69,9 +72,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .filter-btn:hover { border-color: var(--accent); color: var(--text); }
 .filter-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .artifact-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; overflow-y: auto; }
-.artifact-item { padding: 8px 10px; background: var(--bg3); border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; font-size: 12px; }
-.artifact-item:hover { border-color: var(--accent); }
-.artifact-item .title { font-weight: 500; margin-bottom: 2px; }
+.artifact-item { padding: 9px 11px; background: var(--bg3); border-radius: 8px; cursor: pointer; border: 1px solid transparent; border-left: 3px solid var(--border); transition: all 0.15s; font-size: 12px; }
+.artifact-item:hover { border-color: var(--accent); border-left-color: var(--accent); transform: translateX(1px); }
+.artifact-item .title { font-weight: 500; margin-bottom: 2px; line-height: 1.45; }
+.dash-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); font-size: 10.5px; color: var(--text2); display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); flex-shrink: 0; }
 .artifact-item .meta { font-size: 11px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; }
 .artifact-item .type-badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; }
 .chart-container { height: 140px; margin-bottom: 8px; flex-shrink: 0; }
@@ -309,13 +314,14 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
     <div class="panel"><h3><i class="fas fa-chart-pie"></i> Sentiment</h3><div class="chart-container"><canvas id="sentimentChart"></canvas></div></div>
     <div class="panel"><h3><i class="fas fa-bullseye"></i> Projection Confidence</h3><div class="chart-container"><canvas id="confidenceChart"></canvas></div></div>
     <div class="panel"><h3><i class="fas fa-list"></i> Artifacts</h3><div id="artifactList" class="artifact-list"></div></div>
+    <div class="dash-foot"><span class="live-dot" title="Dashboard live"></span><span>Live · <span id="footCounts">—</span></span></div>
   </div>
 
   <div class="main">
     <div class="main-tabs">
-      <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph</div>
-      <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility</div>
-      <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline</div>
+      <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph <span class="cnt" id="cntGraph">0</span></div>
+      <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility <span class="cnt" id="cntPlaus">0</span></div>
+      <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline <span class="cnt" id="cntTl">0</span></div>
       <div class="main-tab" data-view="security" id="securityTab" style="display:none;" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
     <div class="main-content">
@@ -578,6 +584,13 @@ async function loadData() {
   await Promise.all([graphP, artifactsP]);
   buildTypeFilters();
   filterArtifacts();
+  try {
+    document.getElementById('cntGraph').textContent = allArtifacts.length;
+    const pc = await (await fetch(`${API}/plausibility`)).json();
+    document.getElementById('cntPlaus').textContent = Object.keys(pc.by_type || pc).length || '';
+    const tl = await (await fetch(`${API}/timeline`)).json();
+    document.getElementById('cntTl').textContent = (tl.gaps || []).length || '';
+  } catch (e) {}
   const statsData = await statsP;
   renderSentimentChart(statsData);
   renderConfidenceChart(statsData);
@@ -618,6 +631,8 @@ async function loadStats() {
   const pEl = document.getElementById('statProjections');
   if (pEl) pEl.textContent = data.projections.total;
   loadMedianAgi();
+  const fc = document.getElementById('footCounts');
+  if (fc) fc.textContent = `${data.total_artifacts} artifacts · ${data.projections.total} forecasts`;
   return data;
 }
 
@@ -675,8 +690,9 @@ function renderArtifactList(items) {
   container.innerHTML = items.map(a => {
     const badge = a.artifact_type;
     const sent = allArtifacts.find(x => x.id === a.id)?.sentiment;
-    return `<div class="artifact-item" onclick="focusNode(${a.id})">
-      <div class="title"><span class="type-badge badge-${badge}">${badge}</span> ${a.title}</div>
+    const dotColor = (typeof TYPE_COLORS !== 'undefined' && TYPE_COLORS[a.artifact_type]) || 'var(--border)';
+    return `<div class="artifact-item" style="border-left-color:${dotColor};" onclick="focusNode(${a.id})" role="button" tabindex="0" onkeydown="if(event.key==='Enter')focusNode(${a.id})">
+      <div class="title"><span class="type-badge badge-${badge}">${badge}</span> ${secEscShort(a.title, 90)}</div>
       <div class="meta">
         <span>${a.author || 'Unknown'}</span>
         ${a.date_published ? `<span>${new Date(a.date_published).toLocaleDateString()}</span>` : ''}
@@ -1599,6 +1615,7 @@ function secPostureShort(posture) {
   if (/MODERATE/i.test(s)) return 'Moderate risk';
   return 'Low risk';
 }
+function secEscShort(s, n) { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 function secDots(n, cls) {
   let h = '<span class="sec-dots" aria-hidden="true">';
   for (let i = 1; i <= 5; i++) h += `<i class="${i <= n ? cls : ''}"></i>`;
