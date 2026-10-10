@@ -4,6 +4,58 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 
 ---
 
+## Showcase
+
+| Discoveries (landing view) | Knowledge graph |
+|---|---|
+| ![Discoveries tab — attention queue, new arrivals, influential findings](docs/screenshots/01-discoveries.png) | ![Interactive knowledge graph of 1000+ artifacts](docs/screenshots/02-graph.png) |
+| *Attention queue, newest arrivals, and most-linked findings — ranked live on every load.* | *Zoomable, filterable graph of the full AGI discourse, colored by artifact type.* |
+
+| Plausibility | Timeline — road to AGI |
+|---|---|
+| ![Plausibility tab — animated projection scoring](docs/screenshots/03-plausibility.png) | ![Timeline tab — median AGI year, milestone road, bridge gaps](docs/screenshots/04-timeline.png) |
+| *Animated plausibility rings per projection type, with confidence, sentiment, and evidence.* | *Median forecast year, horizon bands, capability signals, and the 5 open gaps to safe AGI.* |
+
+---
+
+## Features at a glance
+
+| Area | Features |
+|---|---|
+| **Discoveries (landing)** | Urgency-ranked attention queue · new-arrivals feed with NEW badges · influence ranking by graph degree · count-up / stagger / pulse animations · `GET /api/discoveries` |
+| **Knowledge graph** | vis-network zoom/pan/physics · type colors + glow · sentiment/confidence sizing · type filters + full-text search · similarity rings · diarized-concept cards for interviews & testimonies |
+| **Plausibility** | Animated overall ring · per-type cards (confidence bars, sentiment, evidence lists) · year-range + source-year filters · trend endpoint |
+| **Timeline to AGI** | Live median forecast year + spread · 5-year-bucket chart · horizon bands (achieved/near/mid/far) · 5 open bridge gaps with evidence counts · auto-refreshes with ingestion |
+| **AI Security workbench** | 12-threat STRIDE + OWASP LLM catalog · normalized 0–100 scoring with drivers/breakdown · severity filter chips + L/I labels · coverage vs OWASP 2025 / ATLAS / NIST RMF / LINDDUN · what-if lab · Monte Carlo · kill-chains · red-team harness · hypotheses · peer review + Cohen's κ · versioning · ZIP/CSV/BibTeX exports |
+| **Ingestion** | RSS + Nitter + arXiv auto-pipeline (daily 04:00 UTC + Fetch button) · relevance filter · regex sentiment · tag extraction · projection detection · whistleblower-testimony detection · auto-relationships (capped) |
+| **Curation** | Manual Add (all 9 types incl. diarized testimony) · typed Relate edges · re-seed from 71 curated artifacts + 96 relationships |
+| **API** | 30+ REST endpoints: artifacts, graph, clusters, stats, plausibility (+trend), timeline, discoveries, search, ingest, security suite, A2A agent invoke |
+| **Ops** | Docker Compose + persistent volume · WAL-mode SQLite · dark/light themes · responsive layout · keyboard-accessible controls |
+
+---
+
+## Recent discoveries — October 2026 snapshot
+
+*Point-in-time writeup from the live tool (1,090 artifacts, 587 projections). Open the **Discoveries** tab for the current ranking — it recomputes on every load.*
+
+### Needs immediate attention (top of the queue)
+- **Subliminal backdoor implantation at low sample counts** (Redwood Research) — dystopian outlook, 80% confidence: attackers can implant backdoors without prompt access. Directly relevant to the alignment & control gap.
+- **AI-race dynamics** — "not a prisoner's dilemma" thesis plus fresh reports of frontier-lab departures (e.g. DeepMind) amid safety disagreements: race pressure keeps crowding out caution.
+- **Attack evidence in the wild** — public OpenAI↔HuggingFace attack reports and new backdoor-narrowing research (stratified inoculation prompting, J-space monitoring pilots): defenders and attackers co-evolving in the open.
+
+### New arrivals (≈97 in the last week)
+- Fresh arXiv intake: egocentric-video limits, RL data diets at mega-scale, statistical checks on METR time-horizon plots, ZX-diagram entanglement measures.
+- Safety-relevant essays: a false-police-tip incident (72-day detection lag) and refusal-inheritance studies in abliterated models — live inputs to the evaluations gap.
+
+### Most influential findings (by graph links)
+- Evaluation methodology pieces anchor the graph (most-linked nodes), confirming the community's center of gravity: *how we measure* is the bottleneck debate.
+- Timeline anchors (Metaculus community forecast, expert surveys) remain the most-cited forecasts behind the ~2029 median AGI year.
+
+### Honest caveats (help wanted)
+- The auto-pipeline over-flags: off-topic items occasionally land in the queue as "dystopian 80%" (regex forecast-language false positives), and influence scores track auto-relationship density, which inflates generic nodes. Tightening relevance ranking and relationship weighting is the highest-value contribution on the roadmap — see [Collaborating](#collaborating--for-research-groups).
+
+---
+
 ## Architecture
 
 ```
@@ -33,7 +85,7 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 |---|---|---|
 | id | Integer | Primary key |
 | title | String(500) | Artifact title |
-| artifact_type | Enum | `book`, `paper`, `essay`, `tweet`, `interview`, `news`, `research`, `projection` |
+| artifact_type | Enum | `book`, `paper`, `essay`, `tweet`, `interview`, `testimony`, `news`, `research`, `projection` |
 | url | String(1000) | Source URL |
 | description | Text | Summary / abstract |
 | content | Text | Full text (paper abstract, diarized interview concepts) |
@@ -175,6 +227,15 @@ Represents the aggregate credibility-weighted outlook across all collected proje
   - List of contributing artifacts
 - Staggered card entrance animations (200ms + 180ms offset per card)
 
+### Discoveries Tab (landing view)
+- **Needs immediate attention** — top-8 urgency queue: high-confidence
+  dystopian/cautionary projections plus recent whistleblower warnings, each
+  with an urgency bar and plain-language reasons (`GET /api/discoveries`)
+- **New & influential** — latest-arrivals feed with NEW badges and age labels;
+  most-influential findings ranked by live graph degree with animated bars
+- **Animations** — eased count-ups, staggered card entrances, pulse rings on
+  critical items, shimmer badges (all disabled under `prefers-reduced-motion`)
+
 ### Timeline Tab — Road to AGI
 - **Where we are**: median forecast AGI year + interquartile spread, forecast
   mix by type, 5-year-bucket chart — all computed live from dated projections
@@ -221,6 +282,34 @@ Represents the aggregate credibility-weighted outlook across all collected proje
 | POST | `/api/reseed` | Clear database and reload from seed |
 | GET | `/api/search` | Full-text search across title/description/author/tags |
 | GET | `/` | Serve dashboard |
+
+---
+
+## Collaborating — for research groups
+
+This dashboard is built to be a shared evidence base for researchers studying AGI timelines, safety, governance, and societal impact. Every number on screen is derived live from the knowledge graph — no static claims — so the picture improves as collaborators contribute.
+
+### What collaborators get
+- **Discoveries tab** — start here. The attention queue surfaces high-urgency risks (high-confidence cautionary/dystopian projections, insider whistleblower warnings) while the arrivals feed and influence ranking show what's new and what matters most in the graph.
+- **Timeline tab** — the current best answer to "where are we toward AGI": median forecast year with spread, milestone road by horizon band, and 5 explicitly open gaps (alignment & control, evaluations, governance, capabilities trajectory, safety culture) each with live evidence counts and close-conditions.
+- **Plausibility tab** — animated, confidence-weighted scoring per projection type (utopian, dystopian, cautionary, accelerationist, neutral) with contributing artifacts listed for audit.
+- **AI Security workbench** (hidden by default; open with `?security`) — deterministic STRIDE + OWASP LLM assessments with normalized 0–100 scoring, coverage/gap analysis against OWASP LLM Top-10 2025 / MITRE ATLAS / NIST AI RMF / LINDDUN, what-if counterfactuals, Monte Carlo uncertainty, kill-chain composer, red-team harness, hypothesis registry, peer review with Cohen's κ, and one-click ZIP/CSV/BibTeX reproducibility packs.
+
+### How to contribute evidence
+1. **Ingest** — press **Fetch** (or wait for the daily 04:00 UTC run): RSS, Nitter, and arXiv sources are relevance-filtered, sentiment-scored, projection-detected, and auto-related into the graph.
+2. **Add manually** — right panel → **Add**: books, papers, essays, interviews, whistleblower **testimonies** (fully diarized `CONCEPT:` transcripts supported), with sentiment and projection metadata.
+3. **Relate** — right panel → **Relate**: typed edges (`supports`, `contradicts`, `builds_upon`, …) between any two artifacts; influence rankings and similarity derive from these.
+4. **Re-seed** — right panel → **Database**: resets to the curated seed (71 artifacts, 96 relationships, incl. 8 diarized frontier-lab whistleblower records).
+
+### Programmatic access & reproducibility
+- REST API: `/api/artifacts`, `/api/graph`, `/api/stats`, `/api/plausibility`, `/api/timeline`, `/api/discoveries`, `/api/search`, plus the full `/api/security/*` suite (analytics, compare, what-if, exports, red-team, hypotheses, reviews, ratings).
+- Every assessment and ranking is recomputed from stored data on request — cite the export pack (Markdown + JSON + CSV + diagrams) and the A2A agent trace for full provenance.
+- SQLite + Docker Compose with a persistent `ags_data` volume: `docker compose up -d --build` reproduces the whole stack.
+
+### Open questions (good first contributions)
+- Expanding auto-ingestion sources (Alignment Forum digests, prediction markets, policy trackers).
+- Calibration studies: do high-confidence projections in the graph outperform low ones over time?
+- Closing the 5 Timeline gaps: which has the fastest-growing evidence base quarter over quarter?
 
 ---
 
