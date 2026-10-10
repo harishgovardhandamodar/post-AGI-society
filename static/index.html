@@ -298,6 +298,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tl-gap { border-left: 3px solid var(--orange); }
 .tl-open { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 8px; border-radius: 8px; background: rgba(210,153,34,.15); color: var(--orange); }
 .tl-link { color: var(--accent); cursor: pointer; }
+.agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.agent-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.agent-card h4 { font-size: 13px; margin-bottom: 4px; }
+.agent-card h4 i { color: var(--teal); margin-right: 6px; }
+.agent-card p { font-size: 11.5px; color: var(--text2); line-height: 1.55; }
+.agent-card .skills { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.agent-card .skills span { font-size: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1px 8px; color: var(--text2); }
+.agent-console-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 900px) { .agent-console-row { grid-template-columns: 1fr; } }
+.agent-field { margin-bottom: 10px; }
+.agent-field label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
+.agent-field select, .agent-field textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
+.agent-field textarea { min-height: 130px; font-family: ui-monospace, monospace; resize: vertical; }
+.agent-out { background: #0a0e14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 11.5px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+html.light .agent-out { background: #f0f2f5; }
 .disc-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; }
 .disc-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .disc-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 8px rgba(0,0,0,.18); }
@@ -351,7 +366,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
       <input class="search-box" id="searchInput" placeholder="Search artifacts..." />
       <span style="font-size:11px;color:var(--text2);" title="Last ingestion run">Updated <span class="num" id="statLastFetch">never</span></span>
       <button id="fetchBtn" class="btn-hd primary" onclick="fetchFromWeb()"><i class="fas fa-cloud-download-alt"></i> <span id="fetchLabel">Fetch</span></button>
-      <button class="btn-hd" onclick="window.open('http://'+location.hostname+':8204','_blank')" title="Open Agentic Knowledge Mapper console"><i class="fas fa-robot" style="color:var(--teal);"></i> Agent Console</button>
+      <button class="btn-hd" onclick="switchMainView('agents')" title="Open this app's agent console"><i class="fas fa-robot" style="color:var(--teal);"></i> Agent Console</button>
       <button id="themeToggle" class="btn-hd" onclick="toggleTheme()"><i id="themeIcon" class="fas fa-moon"></i><span id="themeLabel">Dark</span></button>
       </div>
     </div>
@@ -370,6 +385,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
       <div class="main-tab" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph <span class="cnt" id="cntGraph">0</span></div>
       <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility <span class="cnt" id="cntPlaus">0</span></div>
       <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline <span class="cnt" id="cntTl">0</span></div>
+      <div class="main-tab" data-view="agents" onclick="switchMainView('agents')"><i class="fas fa-robot"></i> Agents</div>
       <div class="main-tab" data-view="security" id="securityTab" style="display:none;" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
     <div class="main-content">
@@ -391,6 +407,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
       </div>
       <div id="plausibilityView"></div>
       <div id="timelineView" style="display:none;height:100%;"></div>
+      <div id="agentsView" style="display:none;height:100%;"></div>
       <div id="securityView">
         <div class="sec-grid">
           <div>
@@ -1279,6 +1296,8 @@ function switchMainView(view) {
   document.getElementById('securityView').style.display = view === 'security' ? 'block' : 'none';
   document.getElementById('securityView').classList.toggle('visible', view === 'security');
   document.getElementById('timelineView').style.display = view === 'timeline' ? 'block' : 'none';
+  document.getElementById('agentsView').style.display = view === 'agents' ? 'block' : 'none';
+  if (view === 'agents' && !agentsLoaded) { agentsLoaded = true; loadAgents(); }
   if (view === 'discoveries' && !discoveriesLoaded) { discoveriesLoaded = true; loadDiscoveries(); }
   if (view === 'timeline' && !timelineLoaded) { timelineLoaded = true; loadTimeline(); }
   if (view === 'graph' && network) setTimeout(() => network.fit({ animation: true }), 100);
@@ -1436,6 +1455,83 @@ function renderDiscoveries(d) {
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll('#discoveriesView .urg-fill, #discoveriesView .inf-fill').forEach(b => { b.style.width = b.getAttribute('data-w') + '%'; });
   }));
+}
+
+let agentsLoaded = false;
+
+const AGENT_INTENTS = {
+  'research-collector': [['collect_research', { product_name: 'Target product', use_case: '', threat_titles: [], top_k: 8 }]],
+  'threat-intel': [['map_attacks', { evidence: [], threat_ids: [] }]],
+  'report-writer': [['write_section', { known_exploits: [], evidence: [] }]],
+  'evidence-scout': [['gather_forecasts', {}]],
+  'forecaster': [['synthesize', { pools: {} }]],
+  'critic': [['review', { forecasts: {} }]],
+};
+
+async function loadAgents() {
+  const el = document.getElementById('agentsView');
+  el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Loading agent registry…</div>';
+  try {
+    const reg = await (await fetch(`${API}/api/agents/cards`)).json();
+    renderAgents(reg.agents || [], reg.protocol || 'a2a/1.0');
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load agent registry</div>';
+  }
+}
+
+function renderAgents(cards, protocol) {
+  const el = document.getElementById('agentsView');
+  const invokable = cards.filter(c => AGENT_INTENTS[c.name]);
+  const grid = cards.map(c => `<div class="agent-card disc-rise">
+      <h4><i class="fas fa-robot"></i>${secEsc(c.name)}</h4>
+      <p>${secEsc(c.description || '')}</p>
+      <div class="skills">${(c.skills || []).map(s => `<span>${secEsc(s)}</span>`).join('')}</div>
+      <div style="font-size:10.5px;color:var(--text2);margin-top:6px;">${secEsc(c.endpoint || '')}</div>
+    </div>`).join('');
+  const opts = invokable.map(c => `<option value="${secEsc(c.name)}">${secEsc(c.name)}</option>`).join('');
+  el.innerHTML = `<div class="disc-wrap">
+    <div class="tl-card disc-rise"><h3><i class="fas fa-robot"></i> Agent console <span style="font-weight:400;text-transform:none;">· protocol ${secEsc(protocol)} · ${cards.length} agents</span></h3>
+      <p style="font-size:12.5px;color:var(--text2);">This app's own agents — the same ones behind the security assessments and agentic predictions. Invoke any agent directly; every hop returns an auditable envelope trace.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button class="btn btn-sm btn-primary" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Agentic predictions</button>
+      </div>
+    </div>
+    <div class="tl-card disc-rise" style="animation-delay:80ms;"><h3>Registry</h3><div class="agent-grid">${grid}</div></div>
+    <div class="tl-card disc-rise" style="animation-delay:140ms;"><h3>Invoke agent</h3>
+      <div class="agent-console-row">
+        <div>
+          <div class="agent-field"><label>Agent</label><select id="agentTo" onchange="agentIntentChanged()">${opts}</select></div>
+          <div class="agent-field"><label>Intent</label><select id="agentIntent"></select></div>
+          <div class="agent-field"><label>Payload (JSON)</label><textarea id="agentPayload" spellcheck="false"></textarea></div>
+          <button class="btn btn-sm btn-primary" onclick="invokeAgent()"><i class="fas fa-play"></i> Invoke</button>
+        </div>
+        <div><div class="agent-field"><label>Envelope response + trace</label><div class="agent-out" id="agentOut">No invocation yet.</div></div></div>
+      </div>
+    </div>
+  </div>`;
+  agentIntentChanged();
+}
+
+function agentIntentChanged() {
+  const to = document.getElementById('agentTo').value;
+  const intents = AGENT_INTENTS[to] || [['', {}]];
+  document.getElementById('agentIntent').innerHTML = intents.map(([i]) => `<option>${secEsc(i)}</option>`).join('');
+  document.getElementById('agentPayload').value = JSON.stringify(intents[0][1], null, 2);
+}
+
+async function invokeAgent() {
+  const out = document.getElementById('agentOut');
+  out.textContent = 'Invoking…';
+  let payload = {};
+  try { payload = JSON.parse(document.getElementById('agentPayload').value || '{}'); }
+  catch (e) { out.textContent = 'Invalid JSON payload: ' + e.message; return; }
+  try {
+    const res = await fetch(`${API}/api/agents/invoke`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: document.getElementById('agentTo').value, intent: document.getElementById('agentIntent').value, payload }) });
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (e) { out.textContent = 'Invoke failed: ' + e.message; }
 }
 
 async function loadPlausibility() {
