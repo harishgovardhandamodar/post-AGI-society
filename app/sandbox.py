@@ -65,6 +65,12 @@ def audit(actor: str, action: str, target: str, verdict: str, detail: str = "") 
              "verdict": verdict, "detail": redact_secrets(detail or "")[:300]}
     with _audit_lock:
         _audit.append(entry)
+    try:
+        from .ledger import append as _ledger_append
+        _ledger_append(entry["actor"], entry["action"], entry["target"],
+                       entry["verdict"], entry["detail"])
+    except Exception:
+        pass  # ledger must never break an agent run
     return entry
 
 

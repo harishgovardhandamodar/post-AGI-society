@@ -1351,6 +1351,20 @@ def agent_protection():
     return protection_status()
 
 
+@app.get("/api/agents/ledger")
+def agent_ledger(limit: int = Query(50, le=200)):
+    """Ledger entries (hash-chained, persistent), newest first."""
+    from .ledger import recent
+    return {"items": recent(limit)}
+
+
+@app.get("/api/agents/ledger/verify")
+def agent_ledger_verify():
+    """Verify the full hash chain. Poll count/head to detect tail truncation."""
+    from .ledger import verify
+    return verify()
+
+
 @app.get("/api/agents/audit")
 def agent_audit(limit: int = Query(50, le=200)):
     """Recent agent tool-use audit trail (fetch/invoke, newest first)."""
