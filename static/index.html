@@ -167,6 +167,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Plausibility view */
 #plausibilityView { display: none; padding: 24px; overflow-y: auto; height: 100%; }
 #plausibilityView.visible { display: block; }
+.plaus-mode-toggle { display: inline-flex; gap: 0; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; margin-bottom: 18px; }
+.plaus-mode-toggle button { border: none; background: transparent; color: var(--text2); font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.plaus-mode-toggle button.active { background: var(--accent); color: var(--bg); }
+.plaus-mode-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.agent-panel { background: var(--bg2); border: 1px solid var(--purple); border-radius: 12px; padding: 18px; margin-bottom: 24px; }
+.agent-panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--purple); margin-bottom: 8px; }
+.agent-method { font-size: 12.5px; color: var(--text2); margin-bottom: 12px; line-height: 1.6; }
+.agent-type { border-top: 1px solid var(--border); padding: 10px 0; }
+.agent-type summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.agent-type summary:focus-visible { outline: 2px solid var(--accent); }
+.rel-chip { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 9px; border-radius: 9px; margin-left: 8px; }
+.rel-high { background: rgba(63,185,80,.15); color: var(--green); }
+.rel-medium { background: rgba(210,153,34,.15); color: var(--orange); }
+.rel-low { background: rgba(248,81,73,.15); color: var(--red); }
+.dis-meter { height: 7px; border-radius: 4px; background: var(--bg3); margin: 6px 0; overflow: hidden; max-width: 320px; }
+.dis-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--green), var(--orange), var(--red)); }
+.agent-trace { font-size: 11px; color: var(--text2); margin-top: 12px; }
+.agent-trace li { margin-bottom: 3px; }
 .plaus-overall { text-align: center; margin-bottom: 32px; padding: 24px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; }
 .plaus-overall-ring { position: relative; width: 100px; height: 100px; margin: 0 auto 12px; }
 .plaus-overall-ring svg { transform: rotate(-90deg); }
@@ -1226,6 +1244,15 @@ async function createRelationship() {
 }
 
 let plausibilityLoaded = false;
+let plausMode = 'classical';
+try { plausMode = localStorage.getItem('plausMode') || 'classical'; } catch (e) {}
+function plausEndpoint(base) { return plausMode === 'agentic' ? `${base}/agentic` : base; }
+function setPlausMode(mode) {
+  plausMode = mode;
+  try { localStorage.setItem('plausMode', mode); } catch (e) {}
+  plausibilityLoaded = true;
+  loadPlausibility();
+}
 
 const PROJ_COLORS = {
   utopian: '#3fb950', dystopian: '#f85149', cautionary: '#d29922',
@@ -1415,12 +1442,46 @@ async function loadPlausibility() {
   const el = document.getElementById('plausibilityView');
   el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Computing plausibility...</div>';
   try {
-    const res = await fetch(`${API}/plausibility`);
+    const res = await fetch(plausEndpoint(`${API}/plausibility`));
     const data = await res.json();
+    currentPlausData = data;
     renderPlausibility(data);
+    if (data.mode === 'agentic') renderAgentPanel(data);
   } catch (e) {
     el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load plausibility</div>';
   }
+}
+
+function plausToggleHtml() {
+  return `<div class="plaus-mode-toggle" role="group" aria-label="Prediction method">
+    <button class="${plausMode === 'classical' ? 'active' : ''}" onclick="setPlausMode('classical')" title="Mean confidence × 0.6 + positive sentiment × 0.4"><i class="fas fa-calculator"></i> Classical</button>
+    <button class="${plausMode === 'agentic' ? 'active' : ''}" onclick="setPlausMode('agentic')" title="Scout → forecaster → critic agent deliberation"><i class="fas fa-robot"></i> Agentic</button>
+  </div>`;
+}
+
+function renderAgentPanel(data) {
+  const host = document.querySelector('#plausibilityView .plaus-overall');
+  if (!host) return;
+  const types = data.types || {};
+  const cards = Object.entries(types).map(([ptype, v]) => {
+    const disPct = Math.min(100, Math.round((v.disagreement_iqr || 0) * 200));
+    const rel = v.reliability || 'low';
+    return `<details class="agent-type">
+      <summary>${secEsc(ptype)} — agentic ${(v.plausibility * 100).toFixed(1)}% <span class="rel-chip rel-${rel}">${rel} reliability</span></summary>
+      <ul style="margin:8px 0 4px 18px;font-size:12px;">${(v.rationale || []).map(r => `<li>${secEsc(r)}</li>`).join('')}</ul>
+      <div style="font-size:11.5px;color:var(--text2);">Forecaster disagreement (IQR ${(v.disagreement_iqr || 0).toFixed(2)})</div>
+      <div class="dis-meter"><div class="dis-fill" style="width:${disPct}%"></div></div>
+      ${(v.caveats || []).length ? `<div style="font-size:12px;margin-top:4px;"><strong>Critic caveats:</strong><ul style="margin:4px 0 0 18px;">${v.caveats.map(c => `<li>${secEsc(c)}</li>`).join('')}</ul></div>` : '<div style="font-size:12px;color:var(--green);margin-top:4px;">Critic: no caveats.</div>'}
+      <div style="font-size:11px;color:var(--text2);margin-top:4px;">n=${v.count} · auto-ingest share ${Math.round((v.auto_share || 0) * 100)}% · stale share ${Math.round((v.stale_share || 0) * 100)}%</div>
+    </details>`;
+  }).join('');
+  const trace = (data.a2a_trace || []).map(h => `<li><strong>${secEsc(h.agent)}</strong> · ${secEsc(h.intent)} <span>· ${secEsc(h.at || '')}${h.note ? ' — ' + secEsc(h.note) : ''}</span></li>`).join('');
+  host.insertAdjacentHTML('afterend', `<div class="agent-panel">
+    <h3><i class="fas fa-robot"></i> Agentic deliberation ${data.a2a_task_id ? '· task ' + secEsc(data.a2a_task_id) : ''}</h3>
+    <div class="agent-method">${secEsc(data.method || '')}${data.skipped_by_filters ? ` ${data.skipped_by_filters} forecast(s) excluded by active year filters.` : ''}</div>
+    ${cards}
+    <details class="agent-trace"><summary style="cursor:pointer;">Agent-to-agent trace (${(data.a2a_trace || []).length} hops)</summary><ol style="margin:6px 0 0 18px;">${trace}</ol></details>
+  </div>`);
 }
 
 function renderPlausibility(data) {
@@ -1432,8 +1493,9 @@ function renderPlausibility(data) {
 
   // Overall card
   const overallPct = Math.round(overall.plausibility * 100);
+  el.dataset.plausMode = plausMode;
   const overallOffset = circum - (overallPct / 100) * circum;
-  let html = `
+  let html = plausToggleHtml() + `
     <div class="plaus-overall">
       <div class="plaus-overall-ring">
         <svg width="100" height="100" viewBox="0 0 100 100">
@@ -1551,7 +1613,7 @@ function filterPlausibility() {
   const to = document.getElementById('yrTo').value;
   const srcFrom = document.getElementById('srcYrFrom').value;
   const srcTo = document.getElementById('srcYrTo').value;
-  let url = `${API}/plausibility`;
+  let url = plausEndpoint(`${API}/plausibility`);
   const params = [];
   if (from) params.push(`year_from=${parseInt(from)}`);
   if (to) params.push(`year_to=${parseInt(to)}`);
@@ -1563,6 +1625,7 @@ function filterPlausibility() {
   fetch(url).then(r => r.json()).then(data => {
     currentPlausData = data;
     renderPlausibility(data);
+    if (data.mode === 'agentic') renderAgentPanel(data);
   }).catch(() => {
     el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load</div>';
   });
