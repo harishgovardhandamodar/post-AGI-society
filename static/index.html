@@ -311,6 +311,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .agent-field label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
 .agent-field select, .agent-field textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
 .agent-field textarea { min-height: 130px; font-family: ui-monospace, monospace; resize: vertical; }
+.shield-banner { display: flex; gap: 10px; align-items: flex-start; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; font-size: 12px; line-height: 1.55; }
+.shield-banner.ok { background: rgba(63,185,80,.1); border: 1px solid var(--green); }
+.shield-banner.local { background: rgba(210,153,34,.1); border: 1px solid var(--orange); }
+.shield-banner i { font-size: 16px; margin-top: 2px; }
+.audit-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; }
+.audit-table th, .audit-table td { border: 1px solid var(--border); padding: 4px 7px; text-align: left; vertical-align: top; }
+.audit-table th { background: var(--bg3); color: var(--text2); text-transform: uppercase; font-size: 10px; }
+.verdict-allowed, .verdict-invoked { color: var(--green); font-weight: 700; }
+.verdict-blocked, .verdict-failed { color: var(--red); font-weight: 700; }
+.verdict-truncated { color: var(--orange); font-weight: 700; }
 .agent-out { background: #0a0e14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 11.5px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 html.light .agent-out { background: #f0f2f5; }
 .disc-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; }
@@ -1510,6 +1520,7 @@ function renderAgents(cards, protocol) {
   const opts = invokable.map(c => `<option value="${secEsc(c.name)}">${secEsc(c.name)}</option>`).join('');
   el.innerHTML = `<div class="disc-wrap">
     <div class="tl-card disc-rise"><h3><i class="fas fa-robot"></i> Agent console <span style="font-weight:400;text-transform:none;">· protocol ${secEsc(protocol)} · ${cards.length} agents</span></h3>
+      <div id="shieldBanner"><span style="color:var(--text2);font-size:12px;">Checking protection…</span></div>
       <p style="font-size:12.5px;color:var(--text2);">This app's own agents — the same ones behind the security assessments and agentic predictions. Invoke any agent directly; every hop returns an auditable envelope trace.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
         <button class="btn btn-sm btn-primary" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Agentic predictions</button>
@@ -1529,6 +1540,39 @@ function renderAgents(cards, protocol) {
     </div>
   </div>`;
   agentIntentChanged();
+  loadProtection();
+  loadAudit();
+}
+
+async function loadProtection() {
+  try {
+    const p = await (await fetch(`${API}/agents/protection`)).json();
+    const ok = p.mode === 'openshell-supervised';
+    document.getElementById('shieldBanner').innerHTML =
+      `<div class="shield-banner ${ok ? 'ok' : 'local'}"><i class="fas fa-shield-halved" style="color:${ok ? 'var(--green)' : 'var(--orange)'};"></i>
+       <div><strong>Protection: ${secEsc(p.mode)}</strong><br/>${secEsc(p.notes || '')}<br/>
+       <span style="color:var(--text2);">SSRF private-IP block · secret redaction · ${p.guardrails.max_response_bytes / 1000000}MB cap · ${p.guardrails.fetch_timeout_s}s timeout · audit on</span></div></div>`;
+  } catch (e) {
+    document.getElementById('shieldBanner').innerHTML = '<span style="color:var(--text2);font-size:12px;">Protection status unavailable.</span>';
+  }
+}
+
+async function loadAudit() {
+  try {
+    const a = await (await fetch(`${API}/agents/audit?limit=20`)).json();
+    const rows = (a.items || []).map(e =>
+      `<tr><td style="white-space:nowrap;">${secEsc((e.at || '').slice(0, 19).replace('T', ' '))}</td><td>${secEsc(e.actor)}</td><td>${secEsc(e.action)}</td><td class="verdict-${secEsc(e.verdict)}">${secEsc(e.verdict)}</td><td>${secEsc(e.detail || '')}</td></tr>`).join('');
+    let card = document.getElementById('auditCard');
+    if (!card) {
+      const anchorEl = document.querySelector('#agentsView .tl-card:last-child');
+      if (anchorEl) anchorEl.insertAdjacentHTML('afterend',
+        `<div class="tl-card disc-rise" id="auditCard"><h3><i class="fas fa-list-check"></i> Tool-use audit <button class="btn btn-sm" style="float:right;" onclick="loadAudit()">Refresh</button></h3><div id="auditBody"></div></div>`);
+      card = document.getElementById('auditCard');
+    }
+    document.getElementById('auditBody').innerHTML = rows
+      ? `<div style="overflow-x:auto;"><table class="audit-table"><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Verdict</th><th>Detail</th></tr>${rows}</table></div>`
+      : '<span style="color:var(--text2);font-size:12px;">No tool uses audited yet — invoke an agent or run an assessment.</span>';
+  } catch (e) {}
 }
 
 function agentIntentChanged() {
@@ -1550,6 +1594,7 @@ async function invokeAgent() {
       body: JSON.stringify({ to: document.getElementById('agentTo').value, intent: document.getElementById('agentIntent').value, payload }) });
     const data = await res.json();
     out.textContent = JSON.stringify(data, null, 2);
+    loadAudit();
   } catch (e) { out.textContent = 'Invoke failed: ' + e.message; }
 }
 
