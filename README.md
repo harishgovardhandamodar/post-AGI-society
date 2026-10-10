@@ -419,6 +419,40 @@ PhD-level research workbench (charts, experiments, gap analysis, collaboration).
 - Compare runs (`GET /api/security/compare?ids=1,2`), exports
   (ZIP reproducibility pack, threats CSV, evidence BibTeX, Markdown, PDF)
 
+### Agent protection (OpenShell-aware)
+
+Every agent tool use in this app runs under a protection layer (`app/sandbox.py`),
+modeled on NVIDIA OpenShell sandbox protections:
+
+- **SSRF-safe fetching** — agent page fetches allow http(s) only, resolve
+  hostnames up front, and refuse non-routable targets (localhost, RFC-1918,
+  link-local incl. cloud metadata IPs, credentials-in-URL). Responses are
+  capped (2 MB) and timed out (8 s).
+- **Secret redaction** — API keys, tokens, private keys, and bearer credentials
+  are scrubbed from anything agents store or return.
+- **Audit trail** — every fetch/invoke is recorded (actor, action, verdict);
+  inspect it in the Agents tab or via `GET /api/agents/audit`.
+- **Status** — `GET /api/agents/protection` reports the live posture; the
+  Agents tab shows it as a banner.
+
+Two modes, auto-detected: `openshell-supervised` when this process runs under
+`openshell-sandbox` supervision (network policy, shields, and boundary secret
+rewriting inherited, in-app guardrails as defense in depth), otherwise
+`local-guardrails` (this container's default).
+
+To run the dashboard supervised on an OpenShell host:
+
+```bash
+openshell-sandbox -t 300 -- uvicorn app.main:app --host 0.0.0.0 --port 8200
+# with an OPA network policy allow-list for ingestion endpoints:
+openshell-sandbox -t 300 --policy-rules netspec.rego --policy-data netdata.yaml -- \
+  uvicorn app.main:app --host 0.0.0.0 --port 8200
+```
+
+Residual note: resolve-then-fetch leaves a small DNS-rebinding window that only
+supervisor-level per-connection policy (OpenShell L7 proxy) fully closes —
+one more reason to run supervised in adversarial settings.
+
 ### API endpoints (security)
 | Method | Path | Description |
 |---|---|---|
