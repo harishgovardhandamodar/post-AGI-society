@@ -1343,9 +1343,10 @@ function setTlSub(s) {
   tlSub = s;
   if (s === 'jobs' && !document.getElementById('profBody').dataset.done) loadProfessions();
   if (s === 'edge' && !document.getElementById('edgeBody').dataset.done) loadHumanEdge();
+  if (s === 'safety' && !document.getElementById('safetyBody').dataset.done) loadSafetyDim();
   document.querySelectorAll('#timelineView .tl-subbar button').forEach(b => b.classList.toggle('active', b.dataset.sub === s));
-  ['road', 'jobs', 'edge'].forEach(k => {
-    const pane = document.getElementById('tlPane' + k[0].toUpperCase() + k.slice(1));
+  [['road', 'tlPaneRoad'], ['jobs', 'tlPaneJobs'], ['edge', 'tlPaneEdge'], ['safety', 'tlPaneSafety']].forEach(([k, id]) => {
+    const pane = document.getElementById(id);
     if (pane) pane.style.display = k === s ? '' : 'none';
   });
 }
@@ -1427,6 +1428,42 @@ async function loadHumanEdge(force) {
   }
 }
 
+async function loadSafetyDim(force) {
+  const body = document.getElementById('safetyBody');
+  if (!body) return;
+  if (!force && body.dataset.done) return;
+  try {
+    const d = await (await fetch(`${API}/timeline/safety`)).json();
+    const typeRows = Object.entries(d.by_type || {}).sort((a, b) => b[1].count - a[1].count).map(([k, v]) =>
+      `<div style="margin-bottom:10px;"><div style="font-size:12px;display:flex;justify-content:space-between;"><span><span class="type-badge badge-${k}">${secEsc(k)}</span> <strong>${v.count}</strong> items <span style="color:var(--text2)">(${v.recent} recent)</span></span></div>` +
+      (v.top || []).map(a => `<div style="font-size:11.5px;margin-left:8px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 85))}</a></div>`).join('') + `</div>`).join('');
+    const gapTxt = `safety discourse averages ${d.avg_sentiment_safety} vs ${d.avg_sentiment_overall} overall (gap ${d.sentiment_gap >= 0 ? '+' : ''}${d.sentiment_gap})`;
+    body.innerHTML =
+      `<div class="disc-hero">
+        <div class="tl-stat"><div class="v" id="safetyTotal">${d.total}</div><div class="l">safety items</div></div>
+        <div class="tl-stat"><div class="v">${d.collection_types}</div><div class="l">collection types</div></div>
+        <div class="tl-stat"><div class="v">${d.sentiment_gap >= 0 ? '+' : ''}${d.sentiment_gap}</div><div class="l">concern gap</div></div>
+        <div class="tl-stat"><div class="v">${d.whistleblower_count}</div><div class="l">insider warnings</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;">${gapTxt} — negative means safety writing runs more concerned than the graph at large.</div>
+      <h4 style="font-size:12px;margin:10px 0 6px;">Collections</h4>${typeRows}
+      <h4 style="font-size:12px;margin:12px 0 6px;">Top safety projections</h4>` +
+      (d.top_projections || []).map(f =>
+      `<div class="attn disc-rise" style="border-left-color:var(--purple);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;"><span class="tl-type">${secEsc(f.type)}</span><strong>${secEsc(f.timeframe || 'undated')}</strong> <span style="color:var(--text2)">· conf ${f.confidence}</span></div>
+          <div style="font-size:11.5px;margin-top:2px;">${secEsc(f.summary || '')}</div>
+          ${f.artifact ? `<div style="font-size:11.5px;">• <a class="tl-link" onclick="openArtifactById(${f.artifact.id});return false;">${secEsc(f.artifact.title.slice(0, 85))}</a></div>` : ''}
+        </div>
+      </div>`).join('') +
+      ((d.latest_warnings || []).length ? `<h4 style="font-size:12px;margin:12px 0 6px;">Insider warnings</h4>` + d.latest_warnings.map(a =>
+        `<div style="font-size:11.5px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 85))}</a></div>`).join('') : '');
+    body.dataset.done = '1';
+  } catch (e) {
+    body.innerHTML = '<span style="color:var(--red)">Failed to load.</span>';
+  }
+}
+
 async function loadTimeline() {
   const el = document.getElementById('timelineView');
   el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Charting the road to AGI…</div>';
@@ -1474,6 +1511,7 @@ function renderTimeline(d) {
       <button data-sub="road" class="active" onclick="setTlSub('road')"><i class="fas fa-route"></i> Road to AGI</button>
       <button data-sub="jobs" onclick="setTlSub('jobs')"><i class="fas fa-briefcase"></i> Professions</button>
       <button data-sub="edge" onclick="setTlSub('edge')"><i class="fas fa-heart"></i> Human Edge</button>
+      <button data-sub="safety" onclick="setTlSub('safety')"><i class="fas fa-shield-halved"></i> AI Safety</button>
     </div>
     <div id="tlPaneRoad">
     <div class="tl-card"><h3><i class="fas fa-hourglass-half"></i> Where we are toward AGI <button class="btn btn-sm" style="float:right;" onclick="timelineLoaded=true;loadTimeline();"><i class="fas fa-rotate"></i> Refresh</button></h3>
@@ -1506,6 +1544,12 @@ function renderTimeline(d) {
       <div class="tl-card"><h3><i class="fas fa-heart"></i> Human edge — still needs human intelligence <button class="btn btn-sm" style="float:right;" onclick="loadHumanEdge(true)"><i class="fas fa-rotate"></i> Revisit scores</button></h3>
         <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;">Resilience recomputed live: human discourse minus automation encroachment, plus cautionary support.</div>
         <div id="edgeBody">Loading…</div>
+      </div>
+    </div>
+    <div id="tlPaneSafety" style="display:none;">
+      <div class="tl-card"><h3><i class="fas fa-shield-halved"></i> AI safety dimension — all collections <button class="btn btn-sm" style="float:right;" onclick="loadSafetyDim(true)"><i class="fas fa-rotate"></i> Revisit</button></h3>
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;">Safety corpus aggregated across every collection type, recomputed live.</div>
+        <div id="safetyBody">Loading…</div>
       </div>
     </div>
   </div>`;
