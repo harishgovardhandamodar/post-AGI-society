@@ -111,6 +111,15 @@ class SecurityAssessment(Base):
     threats_json = Column(Text, nullable=True)  # JSON-encoded threat list
     evidence_json = Column(Text, nullable=True)  # JSON: {evidence, queries_run, known_exploits}
     a2a_trace_json = Column(Text, nullable=True)  # JSON: agent-to-agent hop trace
+    # Research-collaboration columns (added incrementally; see _ensure_security_columns)
+    version = Column(Integer, nullable=False, default=1)
+    parent_id = Column(Integer, nullable=True)
+    status = Column(String(50), nullable=False, default="draft")
+    hypotheses_json = Column(Text, nullable=True)  # JSON list of {id, statement, prediction, status, observation}
+    reviews_json = Column(Text, nullable=True)  # JSON list of {reviewer, verdict, comments, at}
+    ratings_json = Column(Text, nullable=True)  # JSON list of {rater, likelihood:{}, impact:{}, at}
+    redteam_json = Column(Text, nullable=True)  # JSON: {results:[{id, verdict, notes}], suite_version}
+    scenarios_json = Column(Text, nullable=True)  # JSON: accepted novel-scenario proposals
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

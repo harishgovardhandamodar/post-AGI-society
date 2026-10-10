@@ -828,6 +828,13 @@ def security_assess(data: SecurityAssessRequest, db: Session = Depends(get_db)):
             "task_id": result.get("a2a_task_id", ""),
             "trace": result.get("a2a_trace", []),
         }),
+        version=1,
+        status="draft",
+        hypotheses_json=_json.dumps([]),
+        reviews_json=_json.dumps([]),
+        ratings_json=_json.dumps([]),
+        redteam_json=_json.dumps({}),
+        scenarios_json=_json.dumps([]),
     )
     db.add(rec)
     db.commit()
@@ -868,21 +875,34 @@ def _security_json(rec: SecurityAssessment):
         "known_exploits": evidence_blob.get("known_exploits", []) if isinstance(evidence_blob, dict) else [],
         "a2a_task_id": trace_blob.get("task_id", "") if isinstance(trace_blob, dict) else "",
         "a2a_trace": trace_blob.get("trace", []) if isinstance(trace_blob, dict) else [],
+        "version": getattr(rec, "version", 1) or 1,
+        "parent_id": getattr(rec, "parent_id", None),
+        "status": getattr(rec, "status", "draft") or "draft",
+        "hypotheses": _load(getattr(rec, "hypotheses_json", None), []),
+        "reviews": _load(getattr(rec, "reviews_json", None), []),
+        "ratings": _load(getattr(rec, "ratings_json", None), []),
+        "redteam": _load(getattr(rec, "redteam_json", None), {}),
+        "scenarios": _load(getattr(rec, "scenarios_json", None), []),
         "created_at": rec.created_at.isoformat() if rec.created_at else None,
     }
 
 
 def _ensure_security_columns():
-    """Add evidence/a2a columns to pre-existing SQLite DBs (fresh DBs already have them)."""
+    """Add evidence/a2a + research-collaboration columns to pre-existing SQLite DBs."""
     try:
         from sqlalchemy import text as _text
         from .database import engine as _engine
         with _engine.begin() as conn:
             cols = [r[1] for r in conn.execute(_text("PRAGMA table_info(security_assessments)")).fetchall()]
-            if "evidence_json" not in cols:
-                conn.execute(_text("ALTER TABLE security_assessments ADD COLUMN evidence_json TEXT"))
-            if "a2a_trace_json" not in cols:
-                conn.execute(_text("ALTER TABLE security_assessments ADD COLUMN a2a_trace_json TEXT"))
+            for name, ddl in [
+                ("evidence_json", "TEXT"), ("a2a_trace_json", "TEXT"),
+                ("version", "INTEGER"), ("parent_id", "INTEGER"),
+                ("status", "VARCHAR(50)"), ("hypotheses_json", "TEXT"),
+                ("reviews_json", "TEXT"), ("ratings_json", "TEXT"),
+                ("redteam_json", "TEXT"), ("scenarios_json", "TEXT"),
+            ]:
+                if name not in cols:
+                    conn.execute(_text(f"ALTER TABLE security_assessments ADD COLUMN {name} {ddl}"))
     except Exception:
         pass  # table may not exist yet on first boot; init_db creates it with columns
 
@@ -966,6 +986,296 @@ def security_pdf(assessment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(501, str(exc))
     return Response(content=pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename=security-assessment-{rec.id}.pdf"})
+
+
+# ------------------------------------------------- security analytics ---
+# PhD-research endpoints: charts data, coverage/gap analysis, what-if lab,
+# comparison, exports, kill-chains, red-team, hypotheses, reviews, ratings.
+
+def _get_assessment_or_404(assessment_id: int, db: Session) -> SecurityAssessment:
+    rec = db.query(SecurityAssessment).filter(SecurityAssessment.id == assessment_id).first()
+    if not rec:
+        raise HTTPException(404, "Assessment not found")
+    return rec
+
+
+@app.get("/api/security/coverage")
+def security_coverage():
+    """Static framework reference: OWASP LLM 2025, NIST AI RMF, LINDDUN,
+    per-threat mappings, kill-chain templates, red-team suite."""
+    from . import security_analytics as ana
+    return {
+        "owasp_llm_2025": ana.OWASP_LLM_2025,
+        "nist_ai_rmf": ana.NIST_AI_RMF_FUNCTIONS,
+        "linddun": ana.LINDDUN_CATEGORIES,
+        "threat_frameworks": ana.THREAT_FRAMEWORKS,
+        "kill_chain_templates": ana.KILL_CHAINS,
+        "redteam_suite": ana.REDTEAM_SUITE,
+    }
+
+
+@app.get("/api/security/assessments/{assessment_id}/analytics")
+def security_analytics(assessment_id: int, db: Session = Depends(get_db)):
+    """Charts + gap-analysis + uncertainty payload for one assessment."""
+    import json as _json
+    from . import security_analytics as ana
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    data = _security_json(rec)
+    threats = data["threats"]
+    return {
+        "id": rec.id,
+        "overall_pct": data["overall_pct"],
+        "severity_distribution": ana.severity_distribution(threats),
+        "stride_breakdown": ana.stride_breakdown(threats),
+        "heatmap": ana.heatmap_grid(threats),
+        "framework_coverage": ana.framework_coverage(threats),
+        "evidence_grades": ana.grade_evidence_list(data["evidence"]),
+        "sensitivity": ana.sensitivity_tornado(threats),
+        "monte_carlo": ana.monte_carlo(threats),
+        "killchains": ana.compose_killchains(threats),
+    }
+
+
+class WhatIfRequest(BaseModel):
+    likelihood_delta: Optional[dict[str, int]] = None
+
+
+@app.post("/api/security/assessments/{assessment_id}/whatif")
+def security_whatif(assessment_id: int, data: WhatIfRequest, db: Session = Depends(get_db)):
+    """Counterfactual lab: apply per-threat likelihood deltas, recompute overall."""
+    from . import security_analytics as ana
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    threats = _security_json(rec)["threats"]
+    return {"id": rec.id, **ana.recompute_whatif(threats, data.likelihood_delta or {})}
+
+
+@app.get("/api/security/compare")
+def security_compare(ids: str = Query(...), db: Session = Depends(get_db)):
+    """Compare assessments: overall trend + per-threat score deltas."""
+    _ensure_security_columns()
+    try:
+        wanted = [int(x) for x in ids.split(",") if x.strip()][:8]
+    except ValueError:
+        raise HTTPException(400, "ids must be comma-separated integers")
+    recs = [db.query(SecurityAssessment).filter(SecurityAssessment.id == i).first() for i in wanted]
+    recs = [r for r in recs if r]
+    if not recs:
+        raise HTTPException(404, "No matching assessments")
+    payloads = [_security_json(r) for r in recs]
+    tids = sorted({t["id"] for p in payloads for t in p["threats"]})
+    matrix = []
+    for tid in tids:
+        row = {"id": tid, "title": next((t["title"] for p in payloads for t in p["threats"] if t["id"] == tid), tid)}
+        for p in payloads:
+            hit = next((t for t in p["threats"] if t["id"] == tid), None)
+            row[f"a{p['id']}"] = hit["score"] if hit else None
+        scores = [row[f"a{p['id']}"] for p in payloads if row[f"a{p['id']}"] is not None]
+        row["delta"] = (scores[-1] - scores[0]) if len(scores) >= 2 else 0
+        matrix.append(row)
+    return {
+        "assessments": [{"id": p["id"], "product_name": p["product_name"],
+                         "overall_pct": p["overall_pct"], "status": p["status"],
+                         "version": p["version"], "created_at": p["created_at"]} for p in payloads],
+        "threat_matrix": matrix,
+    }
+
+
+@app.get("/api/security/assessments/{assessment_id}/killchain")
+def security_killchain(assessment_id: int, db: Session = Depends(get_db)):
+    from . import security_analytics as ana
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    return {"id": rec.id, "killchains": ana.compose_killchains(_security_json(rec)["threats"])}
+
+
+@app.get("/api/security/assessments/{assessment_id}/threats.csv")
+def security_threats_csv(assessment_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+    import csv, io
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id", "title", "stride", "owasp", "likelihood", "impact", "score", "severity"])
+    for t in _security_json(rec)["threats"]:
+        w.writerow([t["id"], t["title"], t["stride"], t["owasp"],
+                    t["likelihood"], t["impact"], t["score"], t["severity"]])
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=threats-{rec.id}.csv"})
+
+
+@app.get("/api/security/assessments/{assessment_id}/evidence.bib")
+def security_evidence_bib(assessment_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import PlainTextResponse
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    lines = []
+    for e in _security_json(rec)["evidence"]:
+        key = f"artifact{e.get('artifact_id', 'x')}"
+        title = (e.get("title") or "untitled").replace("{", "").replace("}", "")
+        year = str(e.get("date_published") or "")[:4] or "nodate"
+        lines.append(f"@misc{{{key},\n  title={{{title}}},\n  year={{{year}}},\n  note={{artifact #{e.get('artifact_id')}}}\n}}")
+    return PlainTextResponse("\n\n".join(lines) or "% no evidence", media_type="text/plain")
+
+
+@app.get("/api/security/assessments/{assessment_id}/export.zip")
+def security_export_zip(assessment_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+    import csv, io, json as _json, zipfile
+    from . import security_analytics as ana
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    data = _security_json(rec)
+    analytics = {"severity": ana.severity_distribution(data["threats"]),
+                 "framework_coverage": ana.framework_coverage(data["threats"]),
+                 "monte_carlo": ana.monte_carlo(data["threats"])}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("report.md", data["markdown"] or "")
+        z.writestr("assessment.json", _json.dumps(data, indent=2, default=str))
+        z.writestr("analytics.json", _json.dumps(analytics, indent=2, default=str))
+        tbuf = io.StringIO()
+        w = csv.writer(tbuf)
+        w.writerow(["id", "title", "stride", "owasp", "likelihood", "impact", "score", "severity"])
+        for t in data["threats"]:
+            w.writerow([t["id"], t["title"], t["stride"], t["owasp"],
+                        t["likelihood"], t["impact"], t["score"], t["severity"]])
+        z.writestr("threats.csv", tbuf.getvalue())
+        z.writestr("diagrams.json", _json.dumps(data["diagrams"], indent=2))
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f"attachment; filename=security-assessment-{rec.id}.zip"})
+
+
+class RedTeamSubmit(BaseModel):
+    results: list[dict] = []
+
+
+@app.post("/api/security/assessments/{assessment_id}/redteam")
+def security_redteam(assessment_id: int, data: RedTeamSubmit, db: Session = Depends(get_db)):
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+    from . import security_analytics as ana
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    suite_ids = {s["id"] for s in ana.REDTEAM_SUITE}
+    cleaned = [{"id": r.get("id"), "verdict": (r.get("verdict") or "").lower(),
+                "notes": r.get("notes", "")}
+               for r in (data.results or []) if r.get("id") in suite_ids
+               and (r.get("verdict") or "").lower() in ("pass", "fail")]
+    blob = {"suite_version": "1.0", "results": cleaned,
+            "logged_at": _dt.now(_tz.utc).isoformat()}
+    rec.redteam_json = _json.dumps(blob)
+    db.commit()
+    passed = sum(1 for r in cleaned if r["verdict"] == "pass")
+    return {"id": rec.id, "total": len(cleaned), "passed": passed,
+            "failed": len(cleaned) - passed, "redteam": blob}
+
+
+class HypothesesSubmit(BaseModel):
+    hypotheses: list[dict] = []
+
+
+@app.post("/api/security/assessments/{assessment_id}/hypotheses")
+def security_hypotheses(assessment_id: int, data: HypothesesSubmit, db: Session = Depends(get_db)):
+    import json as _json
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    cleaned = [{"id": h.get("id") or f"H{i+1}", "statement": h.get("statement", ""),
+                "prediction": h.get("prediction", ""), "status": h.get("status", "open"),
+                "observation": h.get("observation", "")}
+               for i, h in enumerate(data.hypotheses or [])]
+    rec.hypotheses_json = _json.dumps(cleaned)
+    db.commit()
+    return {"id": rec.id, "hypotheses": cleaned}
+
+
+class ReviewSubmit(BaseModel):
+    reviewer: str = ""
+    verdict: str = "comment"
+    comments: str = ""
+
+
+@app.post("/api/security/assessments/{assessment_id}/reviews")
+def security_reviews(assessment_id: int, data: ReviewSubmit, db: Session = Depends(get_db)):
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    try:
+        reviews = _json.loads(rec.reviews_json) if rec.reviews_json else []
+    except Exception:
+        reviews = []
+    reviews.append({"reviewer": data.reviewer or "anonymous",
+                    "verdict": data.verdict, "comments": data.comments,
+                    "at": _dt.now(_tz.utc).isoformat()})
+    rec.reviews_json = _json.dumps(reviews)
+    verdicts = [r["verdict"] for r in reviews]
+    if verdicts.count("approve") >= 2:
+        rec.status = "published"
+    elif "request-changes" in verdicts:
+        rec.status = "changes-requested"
+    elif reviews:
+        rec.status = "in-review"
+    db.commit()
+    return {"id": rec.id, "status": rec.status, "reviews": reviews}
+
+
+class RatingSubmit(BaseModel):
+    rater: str = ""
+    likelihood: Optional[dict[str, int]] = None
+    impact: Optional[dict[str, int]] = None
+
+
+@app.post("/api/security/assessments/{assessment_id}/ratings")
+def security_ratings(assessment_id: int, data: RatingSubmit, db: Session = Depends(get_db)):
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+    from . import security_analytics as ana
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    try:
+        ratings = _json.loads(rec.ratings_json) if rec.ratings_json else []
+    except Exception:
+        ratings = []
+    ratings.append({"rater": data.rater or "anonymous",
+                    "likelihood": data.likelihood or {}, "impact": data.impact or {},
+                    "at": _dt.now(_tz.utc).isoformat()})
+    rec.ratings_json = _json.dumps(ratings)
+    db.commit()
+    out: dict = {"id": rec.id, "ratings_count": len(ratings)}
+    if len(ratings) >= 2:
+        tids = sorted(set(ratings[0].get("likelihood", {})) | set(ratings[1].get("likelihood", {})))
+        la = [int(ratings[0].get("likelihood", {}).get(t, 3)) for t in tids]
+        lb = [int(ratings[1].get("likelihood", {}).get(t, 3)) for t in tids]
+        ia = [int(ratings[0].get("impact", {}).get(t, 3)) for t in tids]
+        ib = [int(ratings[1].get("impact", {}).get(t, 3)) for t in tids]
+        out["kappa_likelihood"] = ana.cohen_kappa(la, lb, categories=[1, 2, 3, 4, 5])
+        out["kappa_impact"] = ana.cohen_kappa(ia, ib, categories=[1, 2, 3, 4, 5])
+    return out
+
+
+@app.post("/api/security/assessments/{assessment_id}/clone")
+def security_clone(assessment_id: int, db: Session = Depends(get_db)):
+    import json as _json
+    _ensure_security_columns()
+    rec = _get_assessment_or_404(assessment_id, db)
+    child = SecurityAssessment(
+        product_name=rec.product_name, product_url=rec.product_url,
+        exposure=rec.exposure, use_case=rec.use_case,
+        overall_pct=rec.overall_pct, posture=rec.posture, markdown=rec.markdown,
+        diagrams_json=rec.diagrams_json, threats_json=rec.threats_json,
+        evidence_json=rec.evidence_json, a2a_trace_json=rec.a2a_trace_json,
+        version=(rec.version or 1) + 1, parent_id=rec.id, status="draft",
+        hypotheses_json=rec.hypotheses_json, reviews_json=_json.dumps([]),
+        ratings_json=_json.dumps([]), redteam_json=_json.dumps({}),
+        scenarios_json=rec.scenarios_json,
+    )
+    db.add(child)
+    db.commit()
+    db.refresh(child)
+    return _security_json(child)
 
 
 def _artifact_json(a: Artifact):
