@@ -436,7 +436,9 @@ Represents the aggregate credibility-weighted outlook across all collected proje
 - **Subtabs**: Road to AGI · **Professions** (14 tracked professions with
   captured/emerging/exposed/monitored statuses, live confidence, and workforce
   consumption projections) · **Human Edge** (10 areas still needing human
-  intelligence, scored durable/contested/eroding with encroachment watch signals)
+  intelligence, scored durable/contested/eroding with encroachment watch signals) · **AI Safety** (safety corpus across all 9
+  collection types, concern-gap sentiment metric, top safety projections,
+  insider warnings)
 
 ### Right Panel (Collapsible)
 - **Add** — manual artifact creation with sentiment and projection fields
@@ -468,6 +470,7 @@ Represents the aggregate credibility-weighted outlook across all collected proje
 | GET | `/api/timeline` | Median AGI year, horizon bands, bridge gaps, freshness (live) |
 | GET | `/api/timeline/professions` | Profession capture statuses + future workforce projections (live scores) |
 | GET | `/api/timeline/human-edge` | Human-edge resilience per area + watch signals (live scores) |
+| GET | `/api/timeline/safety` | Cross-collection safety dimension: by-type corpus, sentiment gap, top projections |
 | POST | `/api/relationships` | Create relationship |
 | POST | `/api/ingest/run` | Trigger scraper (runs in background) |
 | GET | `/api/ingest/status` | Last run, items fetched, total runs |
