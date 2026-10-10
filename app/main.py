@@ -1333,10 +1333,29 @@ def agent_invoke(data: AgentInvokeRequest, db: Session = Depends(get_db)):
         task_id=data.task_id, note="direct invoke",
     )
     try:
+        from .sandbox import audit as _audit
+        _audit("api-caller", f"{data.to}.{data.intent}", data.to, "invoked")
+    except Exception:
+        pass
+    try:
         res = dispatch(env, db)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return res
+
+
+@app.get("/api/agents/protection")
+def agent_protection():
+    """Protection posture: OpenShell supervision detection + guardrail policy."""
+    from .sandbox import protection_status
+    return protection_status()
+
+
+@app.get("/api/agents/audit")
+def agent_audit(limit: int = Query(50, le=200)):
+    """Recent agent tool-use audit trail (fetch/invoke, newest first)."""
+    from .sandbox import recent_audit
+    return {"items": recent_audit(limit)}
 
 
 @app.get("/api/security/assessments")

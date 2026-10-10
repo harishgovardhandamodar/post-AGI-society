@@ -27,15 +27,24 @@ _FETCH_TIMEOUT = 8
 
 
 def fetch_page_summary(url: str) -> dict[str, str]:
-    """Best-effort fetch of a product/doc URL. Never raises; returns summary."""
+    """Best-effort fetch of a product/doc URL. Never raises; returns summary.
+
+    Routed through the protection layer (app/sandbox.py): SSRF-safe
+    (private-IP blocking), response caps, secret redaction, audited.
+    """
     if not url or not url.strip():
         return {"url": url or "", "title": "", "excerpt": "", "status": "skipped"}
-    url = url.strip()
+    try:
+        from .sandbox import guarded_fetch
+        return guarded_fetch(url, actor="security-agent", timeout=_FETCH_TIMEOUT)
+    except Exception:
+        pass
+    # Fallback if the protection layer is unavailable (never raises).
     try:
         import requests
 
         resp = requests.get(
-            url,
+            url.strip(),
             timeout=_FETCH_TIMEOUT,
             headers={"User-Agent": "PostAGI-SecurityAgent/1.0"},
         )
@@ -45,7 +54,6 @@ def fetch_page_summary(url: str) -> dict[str, str]:
         m = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
         if m:
             title = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", m.group(1)))).strip()[:200]
-        # crude text extraction
         text = re.sub(r"<script.*?</script>", " ", body, flags=re.I | re.S)
         text = re.sub(r"<style.*?</style>", " ", text, flags=re.I | re.S)
         text = re.sub(r"<[^>]+>", " ", text)
