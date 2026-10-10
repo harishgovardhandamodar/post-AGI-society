@@ -238,7 +238,25 @@ _THREAT_CATALOG: list[tuple] = [
     ),
 ]
 
-SEVERITY_BANDS = [(9, "Critical"), (6, "High"), (4, "Medium"), (0, "Low")]
+# Bands on the 1–25 L×I scale, calibrated so a typical assessment spans
+# several severities instead of saturating at Critical.
+SEVERITY_BANDS = [(15, "Critical"), (10, "High"), (5, "Medium"), (0, "Low")]
+
+LIKELIHOOD_LABELS = {
+    1: "Rare", 2: "Unlikely", 3: "Possible", 4: "Likely", 5: "Almost certain",
+}
+
+IMPACT_LABELS = {
+    1: "Negligible", 2: "Minor", 3: "Moderate", 4: "Major", 5: "Catastrophic",
+}
+
+# Posture thresholds on the normalized 0–100 overall score.
+POSTURE_BANDS = [
+    (70, "HIGH RISK — do not enable for this data tier without the mitigations below"),
+    (45, "ELEVATED RISK — enable only with guardrails and steward review"),
+    (25, "MODERATE RISK — standard hardening sufficient"),
+    (0, "LOW RISK — routine controls sufficient"),
+]
 
 
 def _severity(score: int) -> str:
@@ -246,6 +264,28 @@ def _severity(score: int) -> str:
         if score >= threshold:
             return name
     return "Low"
+
+
+def overall_from_threat_scores(scores: list) -> tuple[float, dict]:
+    """Normalized 0–100 overall: blends mean severity with peak risk.
+
+    overall = 100 * (0.6 * avg/25 + 0.4 * max/25), so the score discriminates
+    between assessments instead of saturating at 100 whenever one threat peaks.
+    Returns (overall, breakdown dict with max/avg for UI transparency).
+    """
+    if not scores:
+        return 0.0, {"max": 0, "avg": 0.0}
+    mx = max(scores)
+    avg = sum(scores) / len(scores)
+    overall = round(100 * (0.6 * avg / 25 + 0.4 * mx / 25), 1)
+    return overall, {"max": mx, "avg": round(avg, 1)}
+
+
+def _posture(overall: float) -> str:
+    for threshold, label in POSTURE_BANDS:
+        if overall >= threshold:
+            return label
+    return POSTURE_BANDS[-1][1]
 
 
 def _scale_likelihood(base: int, weight: float) -> int:
@@ -344,20 +384,14 @@ def build_assessment(
             "id": tid, "title": title, "stride": stride, "owasp": owasp,
             "likelihood": lik, "impact": impact, "score": score,
             "severity": _severity(score), "description": desc, "mitigations": mits,
+            "likelihood_label": LIKELIHOOD_LABELS[lik],
+            "impact_label": IMPACT_LABELS[impact],
         })
     threats.sort(key=lambda t: (-t["score"], -t["impact"], t["id"]))
 
-    max_score = max(t["score"] for t in threats)
-    avg_score = sum(t["score"] for t in threats) / len(threats)
-    overall_pct = round(min(100, max_score * 4 + avg_score * 2), 1)  # 0-100 scale-ish
-    if overall_pct >= 75:
-        posture = "HIGH RISK — do not enable for this data tier without the mitigations below"
-    elif overall_pct >= 50:
-        posture = "ELEVATED RISK — enable only with guardrails and steward review"
-    elif overall_pct >= 30:
-        posture = "MODERATE RISK — standard hardening sufficient"
-    else:
-        posture = "LOW RISK — routine controls sufficient"
+    overall_pct, score_breakdown = overall_from_threat_scores([t["score"] for t in threats])
+    posture = _posture(overall_pct)
+    top_drivers = [t["id"] for t in threats[:3]]
 
     focus = focus or ["accidental_copy", "misclassification"]
     diagrams = {
@@ -395,6 +429,8 @@ def build_assessment(
         exec_evidence_lines=a2a.get("exec_evidence_lines", []),
         exec_evidence_refs=a2a.get("exec_evidence_refs", []),
         a2a_task_id=a2a.get("task_id", ""),
+        score_breakdown=score_breakdown,
+        top_drivers=top_drivers,
     )
     return {
         "product_name": product_name or "Target product",
@@ -403,6 +439,8 @@ def build_assessment(
         "exposure_label": meta["label"],
         "overall_pct": overall_pct,
         "posture": posture,
+        "score_breakdown": score_breakdown,
+        "top_drivers": top_drivers,
         "threats": threats,
         "diagrams": diagrams,
         "pages": pages,
@@ -432,6 +470,13 @@ def render_markdown(**ctx: Any) -> str:
     A("")
     A(f"> **Overall residual risk: {ctx['overall_pct']}/100 — {ctx['posture']}**")
     A("")
+    bd = ctx.get("score_breakdown") or {}
+    if bd:
+        A(f"_How the score is built:_ peak threat {bd.get('max', '?')}/25, mean {bd.get('avg', '?')}/25 "
+          f"→ 100 × (0.6 × mean/25 + 0.4 × peak/25). Top drivers: "
+          f"{', '.join(ctx.get('top_drivers') or [])}. Severity bands: "
+          f"Critical ≥15, High ≥10, Medium ≥5, Low <5 on the 1–25 L×I scale.")
+        A("")
     top3 = ctx["threats"][:3]
     A("Top risks at a glance:")
     A("")

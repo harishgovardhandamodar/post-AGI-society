@@ -104,11 +104,27 @@ REDTEAM_SUITE: list[dict[str, Any]] = [
 # ------------------------------------------------------------- scoring ---
 
 
+LIKELIHOOD_LABELS = {
+    1: "Rare", 2: "Unlikely", 3: "Possible", 4: "Likely", 5: "Almost certain",
+}
+
+IMPACT_LABELS = {
+    1: "Negligible", 2: "Minor", 3: "Moderate", 4: "Major", 5: "Catastrophic",
+}
+
+# Must match app/security.py SEVERITY_BANDS (Critical ≥15, High ≥10, Medium ≥5).
+SEVERITY_BANDS = [(15, "Critical"), (10, "High"), (5, "Medium"), (0, "Low")]
+
+
 def overall_from_scores(scores: list[float]) -> float:
-    """Same aggregation as build_assessment: min(100, max*4 + avg*2)."""
+    """Normalized 0–100 overall — mirrors security.overall_from_threat_scores.
+
+    overall = 100 * (0.6 * avg/25 + 0.4 * max/25): discriminates between
+    assessments instead of saturating at 100 whenever one threat peaks.
+    """
     if not scores:
         return 0.0
-    return round(min(100, max(scores) * 4 + (sum(scores) / len(scores)) * 2), 1)
+    return round(100 * (0.6 * (sum(scores) / len(scores)) / 25 + 0.4 * max(scores) / 25), 1)
 
 
 def severity_distribution(threats: list[dict[str, Any]]) -> dict[str, int]:
@@ -227,9 +243,12 @@ def recompute_whatif(threats: list[dict[str, Any]],
     for t in threats:
         d = int(likelihood_delta.get(t.get("id", ""), 0) or 0)
         new_l = max(1, min(5, int(t.get("likelihood", 1)) + d))
-        new_score = new_l * int(t.get("impact", 1))
+        new_i = int(t.get("impact", 1))
+        new_score = new_l * new_i
         adjusted.append({**t, "likelihood": new_l, "score": new_score,
-                         "severity": _sev(new_score), "likelihood_delta": d})
+                         "severity": _sev(new_score), "likelihood_delta": d,
+                         "likelihood_label": LIKELIHOOD_LABELS[new_l],
+                         "impact_label": IMPACT_LABELS.get(new_i, "")})
     before = overall_from_scores([t.get("score", 0) for t in threats])
     after = overall_from_scores([t.get("score", 0) for t in adjusted])
     return {"threats": sorted(adjusted, key=lambda t: (-t["score"], -t["impact"], t["id"])),
@@ -238,7 +257,7 @@ def recompute_whatif(threats: list[dict[str, Any]],
 
 
 def _sev(score: int) -> str:
-    for threshold, name in [(9, "Critical"), (6, "High"), (4, "Medium"), (0, "Low")]:
+    for threshold, name in SEVERITY_BANDS:
         if score >= threshold:
             return name
     return "Low"
