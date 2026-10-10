@@ -815,6 +815,133 @@ def _timeline_histogram(mids: list[float]) -> list[dict]:
     return buckets
 
 
+# ---------------------------------------------------------- discoveries ---
+# Attention queue + new arrivals + influential findings. All derived live from
+# the graph so the Discoveries landing view stays fresh as ingestion runs.
+
+def _mini_with_sent(a: Artifact, sent_map: dict) -> dict:
+    d = {"id": a.id, "title": a.title, "artifact_type": a.artifact_type,
+         "author": a.author,
+         "date": a.date_published.isoformat() if a.date_published else None,
+         "created": a.created_at.isoformat() if a.created_at else None,
+         "tags": a.tags or ""}
+    if a.id in sent_map:
+        d["sentiment"] = round(sent_map[a.id], 2)
+    return d
+
+
+@app.get("/api/discoveries")
+def get_discoveries(db: Session = Depends(get_db)):
+    """Items needing immediate attention, newest arrivals, and the most
+    influential findings — ranked live from projections, recency, graph degree,
+    and whistleblower signals."""
+    now = datetime.now(timezone.utc)
+    artifacts = db.query(Artifact).all()
+    projections = db.query(Projection).all()
+    sent_map = {s.artifact_id: s.score for s in db.query(Sentiment).all()}
+
+    degree: dict[int, int] = {}
+    for r in db.query(Relationship).all():
+        degree[r.source_id] = degree.get(r.source_id, 0) + 1
+        degree[r.target_id] = degree.get(r.target_id, 0) + 1
+
+    def age_days(a: Artifact) -> float:
+        base = a.date_published or a.created_at
+        if not base:
+            return 9999.0
+        try:
+            if base.tzinfo is None:
+                base = base.replace(tzinfo=timezone.utc)
+            return max(0.0, (now - base).total_seconds() / 86400)
+        except Exception:
+            return 9999.0
+
+    # --- Attention queue -------------------------------------------------
+    attention = []
+    for p in projections:
+        if p.projection_type not in ("dystopian", "cautionary") or (p.confidence or 0) < 0.6:
+            continue
+        a = next((x for x in artifacts if x.id == p.artifact_id), None)
+        if not a:
+            continue
+        age = age_days(a)
+        urgency = round((p.confidence or 0) * 10
+                        + (2 if p.projection_type == "dystopian" else 1)
+                        + (2 if age <= 90 else (1 if age <= 365 else 0)), 1)
+        reasons = [f"{p.projection_type} outlook at {int((p.confidence or 0) * 100)}% confidence"]
+        if age <= 90:
+            reasons.append("published in the last 90 days")
+        if "whistleblower" in (a.tags or "").lower():
+            reasons.append("corroborated by insider testimony")
+            urgency += 1
+        attention.append({"kind": "risk-projection", "urgency": urgency,
+                          "reasons": reasons, "timeframe": p.timeframe,
+                          "summary": p.summary or "", "artifact": _mini_with_sent(a, sent_map)})
+    for a in artifacts:
+        if "whistleblower" not in (a.tags or "").lower():
+            continue
+        if age_days(a) > 730:
+            continue
+        attention.append({"kind": "whistleblower", "urgency": 9.0,
+                          "reasons": ["insider warning from a frontier lab"],
+                          "timeframe": None, "summary": (a.description or "")[:220],
+                          "artifact": _mini_with_sent(a, sent_map)})
+    seen_art = set()
+    deduped = []
+    for item in sorted(attention, key=lambda x: -x["urgency"]):
+        aid = item["artifact"]["id"]
+        if aid in seen_art:
+            continue
+        seen_art.add(aid)
+        deduped.append(item)
+    attention = deduped[:8]
+
+    # --- New arrivals -----------------------------------------------------
+    def _recency_key(a: Artifact):
+        base = a.created_at or a.date_published
+        if not base:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return base if base.tzinfo else base.replace(tzinfo=timezone.utc)
+
+    fresh = sorted(artifacts, key=_recency_key, reverse=True)[:10]
+    new_arrivals = []
+    for a in fresh:
+        age = age_days(a)
+        new_arrivals.append({**_mini_with_sent(a, sent_map),
+                             "age_label": "today" if age < 1 else (f"{int(age)}d ago" if age < 30 else (f"{int(age / 30)}mo ago" if age < 730 else "archive")),
+                             "is_new": age <= 14,
+                             "connections": degree.get(a.id, 0)})
+
+    # --- Influential findings ----------------------------------------------
+    ranked = sorted(artifacts, key=lambda a: (-degree.get(a.id, 0),
+                                              -(abs(sent_map.get(a.id, 0)) or 0)))[:8]
+    influential = []
+    for a in ranked:
+        projs = [{"type": p.projection_type, "confidence": p.confidence}
+                 for p in projections if p.artifact_id == a.id]
+        influential.append({**_mini_with_sent(a, sent_map),
+                            "degree": degree.get(a.id, 0),
+                            "projections": projs[:2]})
+
+    def _age_seconds(a: Artifact) -> float:
+        base = a.created_at
+        if not base:
+            return 10 ** 12
+        try:
+            if base.tzinfo is None:
+                base = base.replace(tzinfo=timezone.utc)
+            return (now - base).total_seconds()
+        except Exception:
+            return 10 ** 12
+
+    week_new = sum(1 for a in artifacts if _age_seconds(a) < 7 * 86400)
+    return {"attention": attention, "attention_count": len(attention),
+            "new_arrivals": new_arrivals, "new_this_week": week_new,
+            "influential": influential,
+            "max_degree": max(degree.values()) if degree else 0,
+            "generated_at": now.isoformat()}
+
+
 @app.post("/api/relationships")
 def create_relationship(data: RelationshipCreate, db: Session = Depends(get_db)):
     src = db.query(Artifact).filter(Artifact.id == data.source_id).first()
