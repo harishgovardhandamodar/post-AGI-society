@@ -12,6 +12,12 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 | *Attention queue, newest arrivals, and most-linked findings — ranked live on every load.* | *Zoomable, filterable graph of the full AGI discourse, colored by artifact type.* |
 
 | Plausibility | Timeline — road to AGI |
+
+
+| Agent Console (8 agents, OpenShell-aware protection) |
+|---|
+| ![Agent Console — registry, invoke console, protection banner](docs/screenshots/05-agents.png) |
+| *Registry grid, invoke console with envelope traces, protection banner, and tool-use audit — this app's own agents.* |
 |---|---|
 | ![Plausibility tab — animated projection scoring](docs/screenshots/03-plausibility.png) | ![Timeline tab — median AGI year, milestone road, bridge gaps](docs/screenshots/04-timeline.png) |
 | *Animated plausibility rings per projection type, with confidence, sentiment, and evidence.* | *Median forecast year, horizon bands, capability signals, and the 5 open gaps to safe AGI.* |
@@ -76,6 +82,184 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 - **Scraping**: feedparser (RSS), requests (Nitter tweets), arXiv API XML
 - **Scheduling**: APScheduler runs ingestion daily at 04:00 UTC
 - **Containerization**: Docker + docker-compose with named volume `ags_data` for persistence
+
+---
+
+## System design (UML)
+
+All diagrams below are Mermaid source — rendered natively by GitHub/GitLab.
+
+### Component diagram — runtime architecture
+
+```mermaid
+flowchart TB
+    Browser["Browser SPA<br/>static/index.html"]
+    API["FastAPI app/main.py<br/>artifacts · graph · stats · plausibility<br/>timeline · discoveries · ingest · security · agents"]
+    A2A["A2A protocol bus<br/>app/agents.py"]
+    Guard["Protection layer<br/>app/sandbox.py"]
+    MainDB[("SQLite ags.db<br/>artifacts · sentiments<br/>projections · relationships<br/>security_assessments")]
+    LedgerDB[("SQLite ledger.db<br/>hash-chained audit")]
+    Sched["APScheduler<br/>daily 04:00 UTC"]
+    Sources["RSS · Nitter · arXiv"]
+
+    Browser <--> API
+    API <--> A2A
+    A2A --> Guard
+    API <--> MainDB
+    Guard --> LedgerDB
+    Guard --> MainDB
+    Sched --> API
+    Sources --> API
+```
+
+`app/security.py` (assessment engine), `app/security_analytics.py` (coverage,
+what-if, Monte Carlo, kill-chains) and `app/ledger.py` (tamper-evident log)
+plug into the API layer; every agent hop crosses the protection layer.
+
+### Class diagram — data model
+
+```mermaid
+erDiagram
+    ARTIFACTS ||--o{ SENTIMENTS : has
+    ARTIFACTS ||--o{ PROJECTIONS : forecasts
+    ARTIFACTS ||--o{ RELATIONSHIPS : "source of"
+    ARTIFACTS ||--o{ RELATIONSHIPS : "target of"
+    ARTIFACTS {
+        int id PK
+        string title
+        string artifact_type
+        string url
+        text description
+        text content
+        string author
+        datetime date_published
+        string tags
+    }
+    SENTIMENTS {
+        int id PK
+        int artifact_id FK
+        float score
+        string label
+        string source
+    }
+    PROJECTIONS {
+        int id PK
+        int artifact_id FK
+        string projection_type
+        float confidence
+        string timeframe
+        text summary
+    }
+    RELATIONSHIPS {
+        int id PK
+        int source_id FK
+        int target_id FK
+        string relationship_type
+    }
+    SECURITY_ASSESSMENTS {
+        int id PK
+        string product_name
+        float overall_pct
+        text threats_json
+        text evidence_json
+        text a2a_trace_json
+        int version
+        string status
+    }
+    LEDGER {
+        int seq PK
+        string actor
+        string action
+        string verdict
+        string prev_hash
+        string entry_hash
+    }
+```
+
+### Interaction — security assessment (A2A sequence)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as FastAPI
+    participant O as security-orchestrator
+    participant C as research-collector
+    participant T as threat-intel
+    participant W as report-writer
+    participant G as Protection layer
+    U->>API: POST /api/security/assess
+    API->>O: plan_assessment
+    O->>C: collect_research
+    C->>G: guarded graph search
+    G-->>C: ranked evidence
+    C-->>O: research_collected
+    O->>T: map_attacks
+    T-->>O: attacks_mapped
+    O->>W: write_section
+    W-->>O: section_written
+    O-->>API: report + trace
+    API->>G: audit invoke + fetch
+    API-->>U: assessment + diagrams + PDFs
+```
+
+### Interaction — agentic prediction (A2A sequence)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as FastAPI
+    participant O as forecast-orchestrator
+    participant S as evidence-scout
+    participant F as forecaster
+    participant R as critic
+    U->>API: GET /api/plausibility/agentic
+    API->>O: plan_prediction
+    O->>S: gather_forecasts
+    S-->>O: weighted pools
+    O->>F: synthesize
+    F-->>O: penalized scores + rationale
+    O->>R: review
+    R-->>O: reliability + caveats
+    O-->>API: types + overall + trace
+    API-->>U: cards + deliberation panel
+```
+
+### Activity — ingestion pipeline
+
+```mermaid
+flowchart TD
+    Start([Fetch trigger or 04:00 cron]) --> RSS[Fetch RSS + Nitter + arXiv]
+    RSS --> Dedup{URL seen?}
+    Dedup -- yes --> Skip([skip])
+    Dedup -- no --> Rel{Relevant keywords?}
+    Rel -- no --> Skip
+    Rel -- yes --> Score[Sentiment + tags + projection]
+    Score --> Testimony{Whistleblower content?}
+    Testimony -- yes --> Mark[Type = testimony + ethics tags]
+    Testimony -- no --> Keep[Feed type]
+    Mark --> Save[Persist artifact + sentiment + projection]
+    Keep --> Save
+    Save --> Relate[Auto-relate, max 8 edges]
+    Relate --> Done([commit])
+```
+
+### Activity — guarded agent tool use
+
+```mermaid
+flowchart TD
+    Call([Agent tool call]) --> AuditIn[Audit attempt]
+    AuditIn --> Scheme{http or https?}
+    Scheme -- no --> Blocked([blocked + audited])
+    Scheme -- yes --> Creds{Credentials in URL?}
+    Creds -- yes --> Blocked
+    Creds -- no --> DNS[Resolve host]
+    DNS --> Routable{All IPs global?}
+    Routable -- no --> Blocked
+    Routable -- yes --> Fetch[Stream fetch, 2MB cap, 8s timeout]
+    Fetch --> Scrub[Redact secrets]
+    Scrub --> AuditOk[Audit allowed]
+    AuditOk --> Return([excerpt + title])
+```
 
 ---
 
