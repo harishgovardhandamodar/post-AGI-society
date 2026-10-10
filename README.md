@@ -616,6 +616,10 @@ modeled on NVIDIA OpenShell sandbox protections:
   are scrubbed from anything agents store or return.
 - **Audit trail** — every fetch/invoke is recorded (actor, action, verdict);
   inspect it in the Agents tab or via `GET /api/agents/audit`.
+- **Tamper-evident ledger** (`app/ledger.py`, own `data/ledger.db`) — every audit
+  record is hash-chained (sha256 over seq + payload + prev hash). Verify with
+  `GET /api/agents/ledger/verify`; poll `count`/`head` to detect tail truncation
+  (edits and deletions break the chain on the next verify).
 - **Status** — `GET /api/agents/protection` reports the live posture; the
   Agents tab shows it as a banner.
 
@@ -658,6 +662,8 @@ one more reason to run supervised in adversarial settings.
 | GET | `/api/security/coverage` | Framework reference data |
 | GET | `/api/agents/cards` | Agent registry (8 agents, protocol a2a/1.0) |
 | POST | `/api/agents/invoke` | Invoke any agent directly (envelope + trace) |
+| GET | `/api/agents/ledger` | Hash-chained ledger entries (newest first) |
+| GET | `/api/agents/ledger/verify` | Chain verification status + head hash |
 
 ---
 
