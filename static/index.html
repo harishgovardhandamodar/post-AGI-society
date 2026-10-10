@@ -298,7 +298,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
       <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph</div>
       <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility</div>
       <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline</div>
-      <div class="main-tab" data-view="security" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
+      <div class="main-tab" data-view="security" id="securityTab" style="display:none;" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
     <div class="main-content">
       <div id="graphContainer" style="height:100%;position:relative;">
@@ -456,6 +456,13 @@ const TYPE_GLOWS = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    if (new URLSearchParams(window.location.search).has('security')) {
+      const st = document.getElementById('securityTab');
+      if (st) st.style.display = '';
+    }
+  } catch (e) {}
+
   initTheme();
   initTabs();
   loadData();
