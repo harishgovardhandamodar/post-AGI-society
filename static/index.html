@@ -30,6 +30,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .header-right { display: flex; gap: 16px; align-items: center; }
 .search-box { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--text); width: 240px; font-size: 13px; }
 .search-box:focus { outline: none; border-color: var(--accent); }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; background: linear-gradient(135deg, #8250df, #58a6ff); box-shadow: 0 2px 10px rgba(88,166,255,.35); flex-shrink: 0; }
+.brand h1 { font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+.brand .sub { font-size: 11px; color: var(--text2); font-weight: 400; }
+.kpis { display: flex; gap: 8px; flex-wrap: wrap; }
+.kpi { display: flex; align-items: center; gap: 9px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px 7px 8px; min-width: 118px; }
+.kpi .tile { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.kpi .v { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.kpi .l { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .4px; }
+.kpi .num { font-variant-numeric: tabular-nums; }
+.btn-hd { border: 1px solid var(--border); border-radius: 8px; cursor: pointer; padding: 7px 12px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; background: var(--bg3); color: var(--text); transition: filter .15s, transform .05s; }
+.btn-hd:hover { filter: brightness(1.15); }
+.btn-hd:active { transform: translateY(1px); }
+.btn-hd.primary { background: var(--accent); border: none; color: var(--bg); }
+.btn-hd:focus-visible, .main-tab:focus-visible, .filter-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stats-bar { display: flex; gap: 12px; font-size: 13px; color: var(--text2); }
 .stats-bar span { display: flex; align-items: center; gap: 4px; }
 .stats-bar .num { color: var(--text); font-weight: 600; }
@@ -271,18 +286,21 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
 <body>
 <div class="layout">
   <div class="header">
-    <h1><i class="fas fa-brain"></i> Post-AGI Society</h1>
+    <div class="brand"><div class="brand-mark"><i class="fas fa-brain"></i></div>
+      <div><h1>Post-AGI Society</h1><div class="sub">Knowledge graph of the road to AGI</div></div></div>
     <div class="header-right">
-      <div class="stats-bar" id="statsBar">
-        <span><i class="fas fa-database"></i> Artifacts: <span class="num" id="statTotal">0</span></span>
-        <span><i class="fas fa-chart-line"></i> Sentiment: <span class="num" id="statSentiment">0</span></span>
-        <span><i class="fas fa-bullseye"></i> Confidence: <span class="num" id="statConfidence">0</span></span>
-        <span><i class="fas fa-clock"></i> Last fetch: <span class="num" id="statLastFetch">never</span></span>
+      <div class="kpis" id="statsBar" role="status" aria-label="Dashboard key metrics">
+        <div class="kpi"><div class="tile" style="background:rgba(88,166,255,.15);color:var(--accent);"><i class="fas fa-database"></i></div><div><div class="v num" id="statTotal">0</div><div class="l">Artifacts</div></div></div>
+        <div class="kpi"><div class="tile" style="background:rgba(188,140,255,.15);color:var(--purple);"><i class="fas fa-hourglass-half"></i></div><div><div class="v num" id="statMedianAgi">—</div><div class="l">Median AGI</div></div></div>
+        <div class="kpi"><div class="tile" style="background:rgba(63,185,80,.15);color:var(--green);"><i class="fas fa-chart-line"></i></div><div><div class="v num" id="statSentiment">0</div><div class="l">Sentiment</div></div></div>
+        <div class="kpi"><div class="tile" style="background:rgba(210,153,34,.15);color:var(--orange);"><i class="fas fa-bullseye"></i></div><div><div class="v num" id="statConfidence">0</div><div class="l">Confidence</div></div></div>
+        <div class="kpi"><div class="tile" style="background:rgba(86,212,221,.15);color:var(--teal);"><i class="fas fa-layer-group"></i></div><div><div class="v num" id="statProjections">0</div><div class="l">Forecasts</div></div></div>
       </div>
       <input class="search-box" id="searchInput" placeholder="Search artifacts..." />
-      <button id="fetchBtn" onclick="fetchFromWeb()" style="background:var(--accent);border:none;border-radius:6px;color:var(--bg);cursor:pointer;padding:6px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="fas fa-cloud-download-alt"></i> <span id="fetchLabel">Fetch</span></button>
-      <button onclick="window.open('http://'+location.hostname+':8204','_blank')" title="Open Agentic Knowledge Mapper console" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;padding:6px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;"><i class="fas fa-robot" style="color:var(--teal);"></i> Agent Console</button>
-      <button id="themeToggle" onclick="toggleTheme()" style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;padding:6px 10px;font-size:13px;display:flex;align-items:center;gap:6px;"><i id="themeIcon" class="fas fa-moon"></i><span id="themeLabel">Dark</span></button>
+      <span style="font-size:11px;color:var(--text2);" title="Last ingestion run">Updated <span class="num" id="statLastFetch">never</span></span>
+      <button id="fetchBtn" class="btn-hd primary" onclick="fetchFromWeb()"><i class="fas fa-cloud-download-alt"></i> <span id="fetchLabel">Fetch</span></button>
+      <button class="btn-hd" onclick="window.open('http://'+location.hostname+':8204','_blank')" title="Open Agentic Knowledge Mapper console"><i class="fas fa-robot" style="color:var(--teal);"></i> Agent Console</button>
+      <button id="themeToggle" class="btn-hd" onclick="toggleTheme()"><i id="themeIcon" class="fas fa-moon"></i><span id="themeLabel">Dark</span></button>
       </div>
     </div>
 
@@ -593,9 +611,23 @@ async function loadStats() {
   const res = await fetch(`${API}/stats`);
   const data = await res.json();
   document.getElementById('statTotal').textContent = data.total_artifacts;
-  document.getElementById('statSentiment').textContent = data.avg_sentiment.toFixed(2);
+  const sEl = document.getElementById('statSentiment');
+  sEl.textContent = (data.avg_sentiment >= 0 ? '+' : '') + data.avg_sentiment.toFixed(2);
+  sEl.style.color = data.avg_sentiment > 0.1 ? 'var(--green)' : data.avg_sentiment < -0.1 ? 'var(--red)' : 'var(--text)';
   document.getElementById('statConfidence').textContent = data.projections.avg_confidence.toFixed(2);
+  const pEl = document.getElementById('statProjections');
+  if (pEl) pEl.textContent = data.projections.total;
+  loadMedianAgi();
   return data;
+}
+
+async function loadMedianAgi() {
+  try {
+    const data = await (await fetch(`${API}/timeline`)).json();
+    const m = data.where_we_are && data.where_we_are.median_agi_year;
+    const el = document.getElementById('statMedianAgi');
+    if (el && m != null) { el.textContent = Math.round(m); el.title = `p25–p75: ${Math.round(data.where_we_are.spread_p25)}–${Math.round(data.where_we_are.spread_p75)} · ${data.where_we_are.forecast_count} forecasts`; }
+  } catch (e) {}
 }
 
 async function loadGraph() {
