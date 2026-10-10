@@ -1572,6 +1572,31 @@ async function loadAudit() {
     document.getElementById('auditBody').innerHTML = rows
       ? `<div style="overflow-x:auto;"><table class="audit-table"><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Verdict</th><th>Detail</th></tr>${rows}</table></div>`
       : '<span style="color:var(--text2);font-size:12px;">No tool uses audited yet — invoke an agent or run an assessment.</span>';
+    loadLedger();
+  } catch (e) {}
+}
+
+async function loadLedger() {
+  try {
+    const [v, l] = await Promise.all([
+      (await fetch(`${API}/agents/ledger/verify`)).json(),
+      (await fetch(`${API}/agents/ledger?limit=10`)).json(),
+    ]);
+    let box = document.getElementById('ledgerBox');
+    if (!box) {
+      const card = document.getElementById('auditCard');
+      if (!card) return;
+      card.insertAdjacentHTML('beforeend', '<div id="ledgerBox" style="margin-top:12px;"></div>');
+      box = document.getElementById('ledgerBox');
+    }
+    const badge = v.ok
+      ? `<span class="rel-chip rel-high">chain intact · ${v.count} entries</span>`
+      : `<span class="rel-chip rel-low">CHAIN BROKEN${v.broken_at_seq ? ' at seq ' + v.broken_at_seq : ''}</span>`;
+    const rows = (l.items || []).map(e =>
+      `<tr><td style="font-variant-numeric:tabular-nums;">#${e.seq}</td><td style="white-space:nowrap;">${secEsc((e.at || '').slice(0, 19).replace('T', ' '))}</td><td>${secEsc(e.actor)}</td><td>${secEsc(e.action)}</td><td class="verdict-${secEsc(e.verdict)}">${secEsc(e.verdict)}</td><td style="font-family:ui-monospace,monospace;">${secEsc((e.entry_hash || '').slice(0, 12))}…</td></tr>`).join('');
+    box.innerHTML = `<h4 style="font-size:12px;margin:10px 0 6px;"><i class="fas fa-link"></i> Tamper-evident ledger ${badge}</h4>
+      <div style="font-size:11px;color:var(--text2);">Head <code>${secEsc((v.head || '').slice(0, 16))}…</code> · each entry hash-chains to the previous; edits break verification. Poll count to detect tail truncation.</div>
+      ${rows ? `<div style="overflow-x:auto;"><table class="audit-table"><tr><th>Seq</th><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Verdict</th><th>Hash</th></tr>${rows}</table></div>` : ''}`;
   } catch (e) {}
 }
 
