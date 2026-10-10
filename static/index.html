@@ -1177,6 +1177,7 @@ function fitGraph() { network?.fit({ animation: true }); }
 function togglePhysics() { physicsEnabled = !physicsEnabled; network?.setOptions({ physics: { enabled: physicsEnabled } }); }
 
 function renderSentimentChart(data) {
+  if (!window.Chart) return;
   const ctx = document.getElementById('sentimentChart').getContext('2d');
   if (sentimentChartInstance) sentimentChartInstance.destroy();
   const labels = ['Very Neg', 'Negative', 'Neutral', 'Positive', 'Very Pos'];
@@ -1196,6 +1197,7 @@ function renderSentimentChart(data) {
 }
 
 function renderConfidenceChart(data) {
+  if (!window.Chart) return;
   const ctx = document.getElementById('confidenceChart').getContext('2d');
   if (confidenceChartInstance) confidenceChartInstance.destroy();
   const projData = data.projections.by_type || {};
@@ -1746,7 +1748,7 @@ async function loadTrendData() {
 
 function renderTrendChart(data) {
   const canvas = document.getElementById('trendChart');
-  if (!canvas) return;
+  if (!canvas || !window.Chart) return;
   if (plausibilityTrendChart) plausibilityTrendChart.destroy();
   const ctx = canvas.getContext('2d');
   const colors = PROJ_COLORS;
