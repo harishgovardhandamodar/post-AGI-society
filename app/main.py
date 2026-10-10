@@ -673,6 +673,20 @@ CAPABILITY_SIGNAL_TAGS = ["capabilities", "frontier", "scaling", "benchmarks",
                           "reasoning", "multimodal", "alphafold", "breakthrough"]
 
 
+def _clean_text(text: str | None, limit: int = 0) -> str:
+    """Strip HTML leaked in by RSS/auto-ingested summaries for clean display."""
+    import re as _re
+    import html as _html
+    s = _re.sub(r"<[^>]+>", " ", _html.unescape(text or ""))
+    s = _re.sub(r"\s+", " ", s).strip()
+    return s[:limit] if limit and len(s) > limit else s
+
+
+# Year bounds for forecast statistics: excludes parser noise (e.g. "1000"
+# matched inside "1000 words") while keeping genuine retrospective forecasts.
+FORECAST_YEAR_MIN, FORECAST_YEAR_MAX = 2000, 2100
+
+
 def _artifact_matches_tags(artifact_tags: str | None, wanted: list[str]) -> bool:
     have = set(t.strip().lower() for t in (artifact_tags or "").split(",") if t.strip())
     return bool(have & set(wanted))
@@ -702,11 +716,13 @@ def get_timeline(db: Session = Depends(get_db)):
         tf = parse_timeframe(p.timeframe)
         if not tf:
             continue
+        if tf[0] < FORECAST_YEAR_MIN or tf[0] > FORECAST_YEAR_MAX:
+            continue  # parser noise, not a real forecast horizon
         mid = (tf[0] + tf[1]) / 2
         a = art_map.get(p.artifact_id)
         forecasts.append({"year_mid": mid, "start": tf[0], "end": tf[1],
                           "type": p.projection_type, "confidence": p.confidence,
-                          "summary": p.summary or "",
+                          "summary": _clean_text(p.summary, 240),
                           "artifact": _mini(a) if a else None,
                           "sentiment": sentiments.get(p.artifact_id)})
     forecasts.sort(key=lambda f: f["year_mid"])
@@ -727,10 +743,10 @@ def get_timeline(db: Session = Depends(get_db)):
     for p in projections:
         a = art_map.get(p.artifact_id)
         entry = {"type": p.projection_type, "confidence": p.confidence,
-                 "timeframe": p.timeframe, "summary": p.summary or "",
+                 "timeframe": p.timeframe, "summary": _clean_text(p.summary, 240),
                  "artifact": _mini(a) if a else None}
         tf = parse_timeframe(p.timeframe)
-        if not tf:
+        if not tf or tf[0] < FORECAST_YEAR_MIN or tf[0] > FORECAST_YEAR_MAX:
             bands["undated"].append(entry)
         elif tf[1] <= now_year:
             bands["achieved"].append(entry)
@@ -876,7 +892,7 @@ def get_discoveries(db: Session = Depends(get_db)):
             urgency += 1
         attention.append({"kind": "risk-projection", "urgency": urgency,
                           "reasons": reasons, "timeframe": p.timeframe,
-                          "summary": p.summary or "", "artifact": _mini_with_sent(a, sent_map)})
+                          "summary": _clean_text(p.summary, 220), "artifact": _mini_with_sent(a, sent_map)})
     for a in artifacts:
         if "whistleblower" not in (a.tags or "").lower():
             continue
@@ -884,7 +900,7 @@ def get_discoveries(db: Session = Depends(get_db)):
             continue
         attention.append({"kind": "whistleblower", "urgency": 9.0,
                           "reasons": ["insider warning from a frontier lab"],
-                          "timeframe": None, "summary": (a.description or "")[:220],
+                          "timeframe": None, "summary": _clean_text(a.description, 220),
                           "artifact": _mini_with_sent(a, sent_map)})
     seen_art = set()
     deduped = []
