@@ -271,7 +271,14 @@ PhD-level research workbench (charts, experiments, gap analysis, collaboration).
 
 ### Assessment engine
 - 12-threat catalog (T01–T12) with STRIDE + OWASP LLM mapping, exposure-tier
-  likelihood scaling, L×I scoring, 0–100 overall + posture label (`app/security.py`)
+  likelihood scaling, L×I scoring (1–25), normalized 0–100 overall + posture
+  label (`app/security.py`)
+- Scoring: `overall = 100 × (0.6 × mean/25 + 0.4 × peak/25)` — blends average
+  pressure with peak risk so runs discriminate (restricted ≈75, internal ≈58,
+  public ≈48) instead of saturating at 100. Severity bands: Critical ≥15,
+  High ≥10, Medium ≥5, Low <5. Likelihood (Rare…Almost certain) and impact
+  (Negligible…Catastrophic) labels ship on every threat; each report shows its
+  score breakdown (peak/mean) and top-3 driver threats
 - A2A workflow (orchestrator → research-collector → threat-intel → report-writer)
   with auditable trace; research-collector cites this app's own knowledge graph
   (papers, whistleblower testimonies) as evidence (`app/agents.py`)
@@ -279,7 +286,9 @@ PhD-level research workbench (charts, experiments, gap analysis, collaboration).
 
 ### Analytics & charts (`GET /api/security/assessments/{id}/analytics`)
 - Severity distribution (bar), STRIDE breakdown (donut), L×I scatter, OWASP radar
-- Clickable 5×5 risk heat-map filtering the threat register
+- Executive score gauge (SVG ring) with posture chip, top drivers, and breakdown
+- Severity filter chips + sorting, L/I dot-bar indicators with plain-language labels
+- Clickable, keyboard-accessible 5×5 risk heat-map filtering register + detail cards
 - Sensitivity tornado (L±1 swing per threat) + Monte Carlo uncertainty
   (L/I ±1, n=1000 → P5/P25/P50/P75/P90 + histogram)
 
