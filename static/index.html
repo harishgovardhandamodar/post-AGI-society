@@ -319,6 +319,15 @@ html.light .agent-out { background: #f0f2f5; }
 .disc-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); margin-bottom: 12px; font-weight: 600; }
 @keyframes disc-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 .disc-rise { animation: disc-rise .5s cubic-bezier(.2,.7,.3,1) both; }
+.attn.clickable { cursor: pointer; transition: border-color .15s, transform .15s; }
+.attn.clickable:hover { border-color: var(--accent); transform: translateX(2px); }
+.attn.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl-stat.clickable { cursor: pointer; transition: border-color .15s; }
+.tl-stat.clickable:hover { border-color: var(--accent); }
+.tl-stat.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.disc-row { cursor: pointer; border-radius: 8px; transition: background .15s; }
+.disc-row:hover { background: var(--bg3); }
+.disc-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .attn { display: flex; gap: 12px; padding: 12px; border-radius: 10px; background: var(--bg3); margin-bottom: 8px; border-left: 3px solid var(--red); }
 .attn.warn { border-left-color: var(--orange); }
 .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); margin-top: 4px; flex-shrink: 0; animation: disc-pulse 1.8s ease-out infinite; }
@@ -1381,6 +1390,14 @@ function renderTimeline(d) {
 
 let discoveriesLoaded = false;
 
+function discOpen(id) { if (id != null) openArtifactById(id); }
+function discScroll(id) {
+  const n = document.getElementById(id);
+  if (n) n.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function discRowKey(ev, id) {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); discOpen(id); }
+}
 function discCountUp(el, target, suffix) {
   suffix = suffix || '';
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1409,10 +1426,10 @@ function renderDiscoveries(d) {
   const attn = (d.attention || []).map((a, i) => {
     const art = a.artifact || {};
     const pct = Math.min(100, Math.round(a.urgency / 12 * 100));
-    return `<div class="attn${a.kind === 'whistleblower' ? ' warn' : ''} disc-rise" style="animation-delay:${i * 90}ms">
+    return `<div class="attn clickable${a.kind === 'whistleblower' ? ' warn' : ''} disc-rise" style="animation-delay:${i * 90}ms" role="button" tabindex="0" title="Open artifact #${art.id}" onclick="discOpen(${art.id})" onkeydown="discRowKey(event, ${art.id})">
       <span class="pulse-dot" title="needs attention"></span>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;font-weight:600;"><a class="tl-link" onclick="openArtifactById(${art.id});return false;">${secEsc(art.title || 'Untitled')}</a></div>
+        <div style="font-size:12px;font-weight:600;"><a class="tl-link">${secEsc(art.title || 'Untitled')}</a></div>
         <div style="font-size:11px;color:var(--text2);margin-top:2px;">${(a.reasons || []).map(secEsc).join(' · ')}${a.timeframe ? ' · horizon ' + secEsc(a.timeframe) : ''}</div>
         ${a.summary ? `<div style="font-size:11.5px;margin-top:3px;">${secEsc(a.summary.slice(0, 200))}</div>` : ''}
         <div class="urg-bar" title="urgency ${a.urgency}"><div class="urg-fill" data-w="${pct}"></div></div>
@@ -1421,32 +1438,32 @@ function renderDiscoveries(d) {
     </div>`;
   }).join('');
   const news = (d.new_arrivals || []).map((a, i) =>
-    `<div class="attn disc-rise" style="animation-delay:${i * 70}ms;border-left-color:var(--accent);">
+    `<div class="attn clickable disc-rise" style="animation-delay:${i * 70}ms;border-left-color:var(--accent);" role="button" tabindex="0" title="Open artifact #${a.id}" onclick="discOpen(${a.id})" onkeydown="discRowKey(event, ${a.id})">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;">${a.is_new ? '<span class="new-badge">NEW</span>' : ''}<a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 100))}</a></div>
+        <div style="font-size:12px;">${a.is_new ? '<span class="new-badge">NEW</span>' : ''}<a class="tl-link">${secEsc(a.title.slice(0, 100))}</a></div>
         <div style="font-size:11px;color:var(--text2);margin-top:2px;"><span class="type-badge badge-${a.artifact_type}">${secEsc(a.artifact_type)}</span> ${secEsc(a.age_label)} · ${a.connections} links</div>
       </div>
     </div>`).join('');
   const mx = Math.max(1, d.max_degree || 1);
   const inf = (d.influential || []).map((a, i) => {
     const pct = Math.round(a.degree / mx * 100);
-    return `<div class="disc-rise" style="animation-delay:${i * 80}ms;padding:8px 0;border-bottom:1px solid var(--border);">
-      <div style="font-size:12px;display:flex;justify-content:space-between;gap:8px;"><a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a><strong style="font-variant-numeric:tabular-nums;">${a.degree} links</strong></div>
+    return `<div class="disc-rise disc-row" style="animation-delay:${i * 80}ms;padding:8px;border-bottom:1px solid var(--border);" role="button" tabindex="0" title="Open artifact #${a.id}" onclick="discOpen(${a.id})" onkeydown="discRowKey(event, ${a.id})">
+      <div style="font-size:12px;display:flex;justify-content:space-between;gap:8px;"><a class="tl-link">${secEsc(a.title.slice(0, 90))}</a><strong style="font-variant-numeric:tabular-nums;">${a.degree} links</strong></div>
       <div class="inf-bar"><div class="inf-fill" data-w="${pct}"></div></div>
     </div>`;
   }).join('');
   el.innerHTML = `<div class="disc-wrap">
     <div class="tl-card disc-rise"><h3><i class="fas fa-sparkles"></i> Discoveries <button class="btn btn-sm" style="float:right;" onclick="discoveriesLoaded=true;loadDiscoveries();"><i class="fas fa-rotate"></i> Refresh</button></h3>
       <div class="disc-hero">
-        <div class="tl-stat"><div class="v" id="discNAttn">0</div><div class="l">need attention now</div></div>
-        <div class="tl-stat"><div class="v" id="discNNew">0</div><div class="l">arrived this week</div></div>
-        <div class="tl-stat"><div class="v" id="discNLinks">0</div><div class="l">most-linked finding</div></div>
+        <div class="tl-stat clickable" role="button" tabindex="0" title="Jump to attention queue" onclick="discScroll('discSecAttn')" onkeydown="if(event.key==='Enter')discScroll('discSecAttn')"><div class="v" id="discNAttn">0</div><div class="l">need attention now</div></div>
+        <div class="tl-stat clickable" role="button" tabindex="0" title="Jump to latest arrivals" onclick="discScroll('discSecNew')" onkeydown="if(event.key==='Enter')discScroll('discSecNew')"><div class="v" id="discNNew">0</div><div class="l">arrived this week</div></div>
+        <div class="tl-stat clickable" role="button" tabindex="0" title="Jump to influential findings" onclick="discScroll('discSecInf')" onkeydown="if(event.key==='Enter')discScroll('discSecInf')"><div class="v" id="discNLinks">0</div><div class="l">most-linked finding</div></div>
       </div>
     </div>
-    <div class="disc-card disc-rise" style="animation-delay:120ms;"><h3><i class="fas fa-bell"></i> Needs immediate attention (${d.attention_count || 0})</h3>${attn || '<span style="color:var(--text2)">All quiet — no high-urgency risks on record.</span>'}</div>
+    <div class="disc-card disc-rise" id="discSecAttn" style="animation-delay:120ms;"><h3><i class="fas fa-bell"></i> Needs immediate attention (${d.attention_count || 0})</h3>${attn || '<span style="color:var(--text2)">All quiet — no high-urgency risks on record.</span>'}</div>
     <div class="disc-card disc-rise" style="animation-delay:200ms;"><h3><i class="fas fa-bolt"></i> New &amp; influential discoveries</h3>
-      <h4 style="font-size:12px;margin:10px 0 4px;">Latest arrivals</h4>${news}
-      <h4 style="font-size:12px;margin:14px 0 4px;">Most influential findings (by graph links)</h4>${inf}
+      <h4 id="discSecNew" style="font-size:12px;margin:10px 0 4px;scroll-margin-top:12px;">Latest arrivals</h4>${news}
+      <h4 id="discSecInf" style="font-size:12px;margin:14px 0 4px;scroll-margin-top:12px;">Most influential findings (by graph links)</h4>${inf}
     </div>
     <div class="tl-fresh">Ranked live · updated with every ingestion run.</div>
   </div>`;
