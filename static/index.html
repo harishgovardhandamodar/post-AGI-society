@@ -221,6 +221,26 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .sev-Medium { background: rgba(88,166,255,0.15); color: var(--accent); font-weight: 700; padding: 1px 8px; border-radius: 8px; font-size: 10.5px; }
 .sev-Low { background: rgba(139,148,158,0.15); color: var(--text2); font-weight: 700; padding: 1px 8px; border-radius: 8px; font-size: 10.5px; }
 .sec-diagram { background: #fff; border-radius: 8px; padding: 12px; margin-top: 8px; overflow-x: auto; }
+.sec-gauge-wrap { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; flex-wrap: wrap; }
+.sec-gauge { transform: rotate(-90deg); }
+.sec-gauge-bg { stroke: var(--border); }
+.sec-gauge-fg { transition: stroke-dashoffset 0.8s ease, stroke 0.3s; }
+.sec-posture-chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 12px; margin: 4px 0; }
+.sec-drivers { font-size: 11.5px; color: var(--text2); margin-top: 4px; }
+.sec-breakdown { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.sec-filter-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.sec-filter-chip { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg3); color: var(--text2); cursor: pointer; }
+.sec-filter-chip.active { border-color: var(--accent); color: var(--text); background: rgba(88,166,255,.12); }
+.sec-filter-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sec-dots { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 4px; }
+.sec-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--border); display: inline-block; }
+.sec-dots i.on-l { background: var(--accent); }
+.sec-dots i.on-i { background: var(--orange); }
+.sec-hist-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+.sec-exp-blurb { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
+.sec-sort { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11.5px; }
+td[role="button"] { outline-offset: -2px; }
+td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
 .sec-diagram pre { display: none; }
 .sec-md { font-size: 12.5px; line-height: 1.65; }
 .sec-md h1, .sec-md h2, .sec-md h3 { margin: 14px 0 8px; }
@@ -287,12 +307,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
               <div class="form-group"><label>Product name</label><input id="secProduct" placeholder="e.g. Collibra AI Writing Assistant" value="Collibra AI Writing Assistant" /></div>
               <div class="form-group"><label>Product link</label><input id="secUrl" placeholder="https://..." value="https://www.collibra.com/blog/the-new-standard-for-metadata-documentation-meet-your-new-ai-writing-assistant" /></div>
               <div class="form-group"><label>Exposure setting</label>
-                <select id="secExposure">
+                <select id="secExposure" onchange="secExposureBlurb()">
                   <option value="restricted_data">Restricted data (highest sensitivity)</option>
                   <option value="confidential_data" selected>Confidential data</option>
                   <option value="internal">Internal</option>
                   <option value="public">Public / synthetic only</option>
                 </select>
+                <div class="sec-exp-blurb" id="secExpBlurb"></div>
               </div>
               <div class="form-group"><label>Use case / data in scope</label><textarea id="secUseCase" placeholder="e.g. Used with restricted + confidential data to auto-draft table/column descriptions">Used with restricted data and confidential data to auto-draft metadata documentation (descriptions, classifications) for catalog assets.</textarea></div>
               <div class="form-group"><label>Workflow notes (optional)</label><textarea id="secWorkflow" placeholder="Paste workflow context...">Asset created → AI suggests description → steward reviews → approve → publish. Admin enables feature, pins model/region, maps roles.</textarea></div>
@@ -1401,7 +1422,7 @@ async function fetchFromWeb() {
     showNotif('Error fetching from web sources', 'error');
   }
   label.textContent = orig;
-  btn.style.pointerEvents = ''; btn.style.opacity = '1';
+  clearInterval(stepTimer); btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<i class="fas fa-play"></i> Run deep security assessment';
 }
 
 async function reseedDatabase() {
@@ -1434,17 +1455,53 @@ function openArtifactById(id) {
 }
 
 function secSeverityColor(pct) {
-  if (pct >= 75) return 'var(--red)';
-  if (pct >= 50) return 'var(--orange)';
-  if (pct >= 30) return 'var(--accent)';
+  if (pct >= 70) return 'var(--red)';
+  if (pct >= 45) return 'var(--orange)';
+  if (pct >= 25) return 'var(--accent)';
   return 'var(--green)';
 }
+function secPostureShort(posture) {
+  const s = String(posture || '');
+  if (/HIGH/i.test(s)) return 'High risk';
+  if (/ELEVATED/i.test(s)) return 'Elevated risk';
+  if (/MODERATE/i.test(s)) return 'Moderate risk';
+  return 'Low risk';
+}
+function secDots(n, cls) {
+  let h = '<span class="sec-dots" aria-hidden="true">';
+  for (let i = 1; i <= 5; i++) h += `<i class="${i <= n ? cls : ''}"></i>`;
+  return h + '</span>';
+}
+window._secSevFilter = 'all';
+window._secHeatSet = null;
+window._secSort = 'score';
 
+const SEC_EXPOSURE_BLURBS = {
+  restricted_data: 'Trade secrets, regulated PII/PHI, credentials. Default posture is DENY — expect a high score.',
+  confidential_data: 'Roadmaps, customer data, financials. AI allowed inside the trust boundary with DLP guardrails.',
+  internal: 'Internal-only, non-sensitive. Broadly allowed with logging and classification hygiene.',
+  public: 'Public or synthetic data only. Residual risk is prompt-injection and hallucinated metadata.'
+};
+function secExposureBlurb() {
+  const el = document.getElementById('secExpBlurb');
+  if (el) el.textContent = SEC_EXPOSURE_BLURBS[document.getElementById('secExposure').value] || '';
+}
 async function runSecurityAssessment() {
   const btn = document.getElementById('secRunBtn');
   const el = document.getElementById('secResult');
-  btn.style.pointerEvents = 'none'; btn.style.opacity = '0.7';
-  el.innerHTML = '<div class="sec-card" style="text-align:center;padding:40px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Security orchestrator running A2A workflow — research-collector searching this app, threat-intel mapping known attacks...</div>';
+  const product = document.getElementById('secProduct').value.trim();
+  if (!product) {
+    showNotif('Product name is required', 'error');
+    document.getElementById('secProduct').focus();
+    return;
+  }
+  secExposureBlurb();
+  btn.disabled = true; btn.style.opacity = '0.7';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Assessing…';
+  el.innerHTML = '<div class="sec-card" style="text-align:center;padding:40px;color:var(--text2)" role="status" aria-live="polite"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/><span id="secLoadStep">Scoring 12 threats against the exposure tier…</span></div>';
+  const steps = ['Scoring 12 threats against the exposure tier…', 'Research-collector searching the knowledge graph…', 'Threat-intel mapping known attacks…', 'Report-writer drafting findings…'];
+  let si = 0;
+  const stepTimer = setInterval(() => { si = (si + 1) % steps.length; const s = document.getElementById('secLoadStep'); if (s) s.textContent = steps[si]; }, 2500);
   const docs = document.getElementById('secDocs').value.split('\n').map(s => s.trim()).filter(Boolean);
   const focus = [];
   if (document.getElementById('secFocusCopy').checked) focus.push('accidental_copy');
@@ -1473,16 +1530,17 @@ async function runSecurityAssessment() {
     el.innerHTML = '<div class="sec-card"><p style="color:var(--red)">Assessment failed. Is the backend running?</p></div>';
     showNotif('Security assessment failed', 'error');
   }
-  btn.style.pointerEvents = ''; btn.style.opacity = '1';
+  clearInterval(stepTimer); btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<i class="fas fa-play"></i> Run deep security assessment';
 }
 
 function renderSecurityReport(data) {
   const el = document.getElementById('secResult');
+  window._secSevFilter = 'all'; window._secHeatSet = null;
   const color = secSeverityColor(data.overall_pct);
   const threats = data.threats || [];
   const dg = data.diagrams || {};
-  let rows = threats.map(t => `<tr data-tid="${secEsc(t.id)}"><td><strong>${secEsc(t.id)}</strong></td><td>${secEsc(t.title)}<br/><span style="color:var(--text2);font-size:10.5px;">${secEsc(t.owasp)}</span></td><td>L${t.likelihood}×I${t.impact}=${t.score}</td><td><span class="sev-${t.severity}">${t.severity}</span></td></tr>`).join('');
-  let details = threats.map(t => `<div class="sec-card"><h4>${secEsc(t.id)} — ${secEsc(t.title)} <span class="sev-${t.severity}">${t.severity}</span></h4><p style="color:var(--text2)"><em>${secEsc(t.stride)} · ${secEsc(t.owasp)} · L${t.likelihood} × I${t.impact} = ${t.score}</em></p><p>${secEsc(t.description)}</p><ul style="margin-left:18px;">${(t.mitigations || []).map(m => `<li>${secEsc(m)}</li>`).join('')}</ul></div>`).join('');
+  let rows = secRegisterRows(threats);
+  let details = threats.map(t => `<div class="sec-card sec-detail" data-tid="${secEsc(t.id)}" data-sev="${secEsc(t.severity)}"><h4>${secEsc(t.id)} — ${secEsc(t.title)} <span class="sev-${t.severity}">${t.severity}</span> <span style="font-size:11px;color:var(--text2);">· score ${t.score}/25</span></h4><p style="color:var(--text2)"><em>${secEsc(t.stride)} · ${secEsc(t.owasp)} · ${secEsc(t.likelihood_label || '')} (L${t.likelihood}) × ${secEsc(t.impact_label || '')} (I${t.impact})</em></p><p>${secEsc(t.description)}</p><ul style="margin-left:18px;">${(t.mitigations || []).map(m => `<li>${secEsc(m)}</li>`).join('')}</ul></div>`).join('');
   const exploits = data.known_exploits || [];
   let exploitsHtml;
   if (!exploits.length) {
@@ -1510,9 +1568,21 @@ function renderSecurityReport(data) {
   el.innerHTML = `
     <div class="sec-card">
       <h3><i class="fas fa-file-shield"></i> Executive summary — ${secEsc(data.product_name)}</h3>
-      <div class="sec-score"><div class="sec-score-num" style="color:${color}">${secEsc(data.overall_pct)}<span style="font-size:14px;">/100</span></div>
-      <div><div class="sec-posture" style="color:${color}">${secEsc(data.posture)}</div>
-      <div style="font-size:11.5px;color:var(--text2)">Exposure: <strong>${secEsc(data.exposure_label || data.exposure)}</strong> · ${threats.length} threats modelled · Assessment #${data.id}</div></div></div>
+      <div class="sec-gauge-wrap">
+        <svg class="sec-gauge" width="92" height="92" viewBox="0 0 92 92" role="img" aria-label="Overall residual risk ${secEsc(data.overall_pct)} out of 100">
+          <circle class="sec-gauge-bg" cx="46" cy="46" r="34" fill="none" stroke-width="9"/>
+          <circle class="sec-gauge-fg" cx="46" cy="46" r="34" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round"
+            stroke-dasharray="${(2 * Math.PI * 34).toFixed(1)}" stroke-dashoffset="${(2 * Math.PI * 34 * (1 - Math.min(100, data.overall_pct) / 100)).toFixed(1)}"/>
+          <text x="46" y="43" text-anchor="middle" fill="var(--text)" font-size="17" font-weight="800" transform="rotate(90 46 46)">${secEsc(data.overall_pct)}</text>
+          <text x="46" y="57" text-anchor="middle" fill="var(--text2)" font-size="9" transform="rotate(90 46 46)">/ 100</text>
+        </svg>
+        <div style="flex:1;min-width:200px;">
+          <span class="sec-posture-chip" style="color:${color};border:1px solid ${color};">${secEsc(secPostureShort(data.posture))}</span>
+          <div style="font-size:12px;margin-top:2px;">${secEsc(data.posture)}</div>
+          <div class="sec-drivers">Top drivers: <strong>${(data.top_drivers || threats.slice(0, 3).map(x => x.id)).join(', ')}</strong> · Exposure: <strong>${secEsc(data.exposure_label || data.exposure)}</strong> · ${threats.length} threats · Assessment #${data.id}${data.version ? ' · v' + data.version : ''}${data.status ? ' · ' + secEsc(data.status) : ''}</div>
+          ${data.score_breakdown ? `<div class="sec-breakdown">Peak ${data.score_breakdown.max}/25 · mean ${data.score_breakdown.avg}/25 → 100 × (0.6 × mean/25 + 0.4 × peak/25). Bands: Critical ≥15 · High ≥10 · Medium ≥5.</div>` : ''}
+        </div>
+      </div>
       <div class="sec-btn-row">
         <button class="btn btn-sm btn-primary" onclick="downloadSecurityMarkdown()"><i class="fas fa-file-lines"></i> Markdown</button>
         <button class="btn btn-sm" onclick="downloadSecurityPDF()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-file-pdf"></i> PDF</button>
@@ -1527,7 +1597,18 @@ function renderSecurityReport(data) {
       <h4 style="margin-top:14px;">Secure workflow</h4><div class="sec-diagram"><div class="mermaid">${secEsc(dg.workflow || '')}</div></div>
     </div>
     <div class="sec-card"><h3><i class="fas fa-triangle-exclamation"></i> Threat &amp; risk register</h3>
-      <div style="overflow-x:auto;"><table class="sec-table"><tr><th>ID</th><th>Threat</th><th>Score</th><th>Severity</th></tr>${rows}</table></div>
+      <div class="sec-filter-row" role="group" aria-label="Filter threats by severity">
+        <span style="font-size:11px;color:var(--text2);">Severity:</span>
+        ${['all', 'Critical', 'High', 'Medium', 'Low'].map(s => `<button class="sec-filter-chip${window._secSevFilter === s ? ' active' : ''}" onclick="secSetSevFilter('${s}')" aria-pressed="${window._secSevFilter === s}">${s === 'all' ? 'All (' + threats.length + ')' : s + ' (' + threats.filter(x => x.severity === s).length + ')'}</button>`).join('')}
+        <span style="font-size:11px;color:var(--text2);margin-left:8px;">Sort:</span>
+        <select class="sec-sort" onchange="secSetSort(this.value)" aria-label="Sort threats">
+          <option value="score"${window._secSort === 'score' ? ' selected' : ''}>by score</option>
+          <option value="severity"${window._secSort === 'severity' ? ' selected' : ''}>by severity</option>
+          <option value="id"${window._secSort === 'id' ? ' selected' : ''}>by ID</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto;"><table class="sec-table" id="secRegisterTable"><tr><th>ID</th><th>Threat</th><th>Likelihood</th><th>Impact</th><th>Score</th><th>Severity</th></tr>${rows}</table></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:6px;">Likelihood: Rare → Almost certain · Impact: Negligible → Catastrophic · Score = L × I (1–25).</div>
       <p style="margin-top:8px;color:var(--text2);font-size:11.5px;">Accidental employee copy (T01) and misclassified / mislabelled files (T03) are modelled as first-class threats with dedicated mitigations — see full report.</p>
     </div>
     <div class="sec-card"><h3><i class="fas fa-bug"></i> Known exploits &amp; research evidence <span style="font-weight:400;text-transform:none;letter-spacing:0;">(via agent-to-agent workflow)</span></h3>
@@ -1615,23 +1696,84 @@ function secRenderLocalCharts(threats) {
     for (let im = 1; im <= 5; im++) {
       const ids = grid[li + 'x' + im] || [];
       const bg = ids.length ? (li * im >= 9 ? 'rgba(248,81,73,.35)' : li * im >= 6 ? 'rgba(210,153,34,.3)' : 'rgba(88,166,255,.18)') : 'transparent';
-      h += `<td style="background:${bg};cursor:${ids.length ? 'pointer' : 'default'};min-width:44px;text-align:center;" ${ids.length ? `onclick="secFilterHeat('${ids.join(',')}')"` : ''}>${ids.join(' ') || '·'}</td>`;
+      h += `<td style="background:${bg};cursor:${ids.length ? 'pointer' : 'default'};min-width:44px;text-align:center;"${ids.length ? ` role="button" tabindex="0" data-ids="${ids.join(',')}" aria-label="Filter register to ${ids.join(', ')}" onclick="secFilterHeat('${ids.join(',')}')" onkeydown="secHeatKey(event)"` : ''}>${ids.join(' ') || '·'}</td>`;
     }
     h += '</tr>';
   }
   document.getElementById('secHeatmap').innerHTML = h + '</table>';
 }
 
-function secFilterHeat(ids) {
-  const set = new Set(ids.split(','));
-  document.getElementById('secHeatFilter').innerHTML = `Filtered to <strong>${secEsc(ids)}</strong> — <a href="#" onclick="secFilterHeatClear();return false;" style="color:var(--accent);">clear</a>`;
-  document.querySelectorAll('#secResult .sec-table tr[data-tid]').forEach(tr => {
-    tr.style.display = set.has(tr.getAttribute('data-tid')) ? '' : 'none';
+function secRegisterRows(threats) {
+  const order = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  const sorted = [...threats].sort((a, b) =>
+    window._secSort === 'id' ? (a.id < b.id ? -1 : 1)
+    : window._secSort === 'severity' ? (order[a.severity] - order[b.severity] || b.score - a.score)
+    : (b.score - a.score || b.impact - a.impact || (a.id < b.id ? -1 : 1)));
+  return sorted.map(x => `<tr data-tid="${secEsc(x.id)}" data-sev="${secEsc(x.severity)}"><td><strong>${secEsc(x.id)}</strong></td><td>${secEsc(x.title)}<br/><span style="color:var(--text2);font-size:10.5px;">${secEsc(x.owasp)}</span></td><td title="${secEsc(x.likelihood_label || '')}">${secEsc(x.likelihood_label || ('L' + x.likelihood))}${secDots(x.likelihood, 'on-l')}</td><td title="${secEsc(x.impact_label || '')}">${secEsc(x.impact_label || ('I' + x.impact))}${secDots(x.impact, 'on-i')}</td><td><strong>${x.score}</strong><span style="color:var(--text2);">/25</span></td><td><span class="sev-${x.severity}">${x.severity}</span></td></tr>`).join('');
+}
+function secSetSevFilter(s) {
+  window._secSevFilter = s;
+  document.querySelectorAll('#secResult .sec-filter-chip').forEach(b => {
+    const on = b.textContent.startsWith(s === 'all' ? 'All' : s);
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on);
+  });
+  secApplyFilters();
+}
+function secSetSort(mode) { window._secSort = mode; secRerenderRegister(); }
+function secRerenderRegister() {
+  const tbl = document.getElementById('secRegisterTable');
+  if (tbl && currentSecurityData) {
+    const head = tbl.rows[0].outerHTML;
+    tbl.innerHTML = head + secRegisterRows(currentSecurityData.threats || []);
+  }
+  // refresh chip counts
+  const threats = (currentSecurityData && currentSecurityData.threats) || [];
+  document.querySelectorAll('#secResult .sec-filter-chip').forEach(b => {
+    const label = b.textContent.replace(/\(\d+\)/, '').trim();
+    const n = label === 'All' ? threats.length : threats.filter(x => x.severity === label).length;
+    b.textContent = `${label} (${n})`;
+  });
+  secApplyFilters();
+}
+function secApplyFilters() {
+  const sev = window._secSevFilter || 'all';
+  const heat = window._secHeatSet;
+  const msg = [];
+  if (sev !== 'all') msg.push('severity ' + sev);
+  if (heat) msg.push('heatmap ' + [...heat].join(' '));
+  document.getElementById('secHeatFilter').innerHTML = msg.length
+    ? `Filtered to <strong>${secEsc(msg.join(' + '))}</strong> — <a href="#" onclick="secClearAllFilters();return false;" style="color:var(--accent);">clear</a>` : '';
+  document.querySelectorAll('#secRegisterTable tr[data-tid]').forEach(tr => {
+    const okSev = sev === 'all' || tr.getAttribute('data-sev') === sev;
+    const okHeat = !heat || heat.has(tr.getAttribute('data-tid'));
+    tr.style.display = okSev && okHeat ? '' : 'none';
+  });
+  document.querySelectorAll('#secResult .sec-detail').forEach(d => {
+    const okSev = sev === 'all' || d.getAttribute('data-sev') === sev;
+    const okHeat = !heat || heat.has(d.getAttribute('data-tid'));
+    d.style.display = okSev && okHeat ? '' : 'none';
   });
 }
+function secClearAllFilters() {
+  window._secSevFilter = 'all'; window._secHeatSet = null;
+  document.querySelectorAll('#secResult .sec-filter-chip').forEach((b, i) => {
+    const on = i === 0;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on);
+  });
+  secApplyFilters();
+}
+function secFilterHeat(ids) {
+  window._secHeatSet = new Set(ids.split(','));
+  secApplyFilters();
+}
 function secFilterHeatClear() {
-  document.getElementById('secHeatFilter').innerHTML = '';
-  document.querySelectorAll('#secResult .sec-table tr[data-tid]').forEach(tr => { tr.style.display = ''; });
+  window._secHeatSet = null;
+  secApplyFilters();
+}
+function secHeatKey(ev) {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); secFilterHeat(ev.currentTarget.getAttribute('data-ids')); }
 }
 
 async function secLoadAnalytics(id) {
@@ -1785,7 +1927,7 @@ async function loadSecurityHistory() {
   try {
     const data = await (await fetch(`${API}/security/assessments`)).json();
     if (!data.items || !data.items.length) { el.innerHTML = '<span style="color:var(--text2)">No past assessments yet.</span>'; return; }
-    el.innerHTML = data.items.map(i => `<div style="padding:6px 0;border-bottom:1px solid var(--border);"><a href="#" onclick="loadSecurityById(${i.id});return false;" style="color:var(--accent);">#${i.id} ${secEsc(i.product_name)}</a> <span style="color:var(--text2)">· ${secEsc(i.exposure)} · ${i.overall_pct}/100 · ${i.threat_count} threats</span></div>`).join('');
+    el.innerHTML = data.items.map(i => `<div style="padding:6px 0;border-bottom:1px solid var(--border);"><span class="sec-hist-dot" style="background:${secSeverityColor(i.overall_pct)};" title="Overall ${i.overall_pct}/100"></span><a href="#" onclick="loadSecurityById(${i.id});return false;" style="color:var(--accent);">#${i.id} ${secEsc(i.product_name)}</a> <span style="color:var(--text2)">· <strong style="color:${secSeverityColor(i.overall_pct)};">${i.overall_pct}</strong>/100 · ${i.threat_count} threats${i.status ? ' · ' + secEsc(i.status) : ''}${i.version > 1 ? ' · v' + i.version : ''}</span></div>`).join('');
   } catch (e) { el.innerHTML = '<span style="color:var(--red)">Failed to load history</span>'; }
 }
 
