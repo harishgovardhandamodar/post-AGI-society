@@ -581,6 +581,74 @@ def _projection_in_year_range(p, year_from, year_to):
     return True
 
 
+@app.get("/api/plausibility/agentic")
+def get_plausibility_agentic(
+    year_from: Optional[int] = Query(None),
+    year_to: Optional[int] = Query(None),
+    source_year_from: Optional[int] = Query(None),
+    source_year_to: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Agentic prediction view: scout → forecaster → critic deliberation.
+
+    Same filters and response shape as classical `/api/plausibility`
+    (per-type plausibility/confidence/sentiment/count plus overall), with
+    agent extras per type: rationale, disagreement IQR, reliability grade,
+    caveats — plus the A2A trace and method note.
+    """
+    from .agents import run_prediction_workflow
+
+    artifacts = db.query(Artifact).all()
+    art_map = {a.id: a for a in artifacts}
+    wf = run_prediction_workflow(db, year_from, year_to, source_year_from, source_year_to)
+
+    types: dict = {}
+    for ptype, f in wf["forecasts"].items():
+        pool = wf["pools"].get(ptype, [])
+        titles = []
+        summaries = []
+        for item in sorted(pool, key=lambda i: -i["weight"])[:15]:
+            a = art_map.get(item["artifact_id"])
+            if a and a.title not in titles:
+                titles.append(a.title)
+            if item.get("summary") and len(summaries) < 6:
+                summaries.append(item["summary"])
+        rev = wf["reviews"].get(ptype, {})
+        types[ptype] = {
+            "count": f["n"],
+            "avg_confidence": f["wmedian_confidence"],
+            "avg_sentiment": f["wmedian_sentiment"],
+            "plausibility": f["score"],
+            "artifacts": titles,
+            "summaries": summaries,
+            "rationale": f["rationale"],
+            "disagreement_iqr": f["disagreement_iqr"],
+            "reliability": rev.get("reliability", "low"),
+            "caveats": rev.get("caveats", []),
+            "auto_share": f["auto_share"],
+            "stale_share": f["stale_share"],
+        }
+    scores = [v["plausibility"] for v in types.values()]
+    return {
+        "mode": "agentic",
+        "types": types,
+        "overall": {
+            "total_projections": sum(v["count"] for v in types.values()),
+            "avg_confidence": round(sum(v["avg_confidence"] for v in types.values()) / len(types), 3) if types else 0,
+            "avg_sentiment": round(sum(v["avg_sentiment"] for v in types.values()) / len(types), 3) if types else 0,
+            "plausibility": round(sum(scores) / len(scores), 3) if scores else 0,
+        },
+        "method": ("evidence-scout pools dated projections with recency/source weights; "
+                   "forecaster takes weighted medians with disagreement penalties, staleness "
+                   "discounts and whistleblower boosts; critic grades reliability and caveats."),
+        "skipped_by_filters": wf["skipped_by_filters"],
+        "a2a_task_id": wf["task_id"],
+        "a2a_trace": wf["a2a_trace"],
+        "year_range": {"projection": {"from": year_from, "to": year_to},
+                       "source": {"from": source_year_from, "to": source_year_to}},
+    }
+
+
 @app.get("/api/plausibility/trend")
 def plausibility_trend(
     year_start: int = Query(2020),

@@ -82,6 +82,43 @@ AGENT_CARDS: list[dict[str, Any]] = [
         "skills": ["write_exploits_section", "write_exec_bullets"],
         "endpoint": "/api/agents/invoke",
     },
+    {
+        "name": "forecast-orchestrator",
+        "protocol": PROTOCOL,
+        "description": "Plans the prediction workflow: scout → forecaster → critic.",
+        "skills": ["plan_prediction", "assemble_forecast"],
+        "endpoint": "/api/plausibility/agentic",
+    },
+    {
+        "name": "evidence-scout",
+        "protocol": PROTOCOL,
+        "description": (
+            "Gathers dated projections with recency, source-type and "
+            "whistleblower-corroboration weights for forecasting."
+        ),
+        "skills": ["gather_forecasts", "weight_evidence"],
+        "endpoint": "/api/agents/invoke",
+    },
+    {
+        "name": "forecaster",
+        "protocol": PROTOCOL,
+        "description": (
+            "Synthesizes weighted-median confidence with disagreement penalties "
+            "and corroboration boosts into agentic plausibility scores."
+        ),
+        "skills": ["synthesize", "penalize_disagreement"],
+        "endpoint": "/api/agents/invoke",
+    },
+    {
+        "name": "critic",
+        "protocol": PROTOCOL,
+        "description": (
+            "Reviews agentic scores for small-n, staleness and auto-ingest bias; "
+            "issues caveats and reliability grades."
+        ),
+        "skills": ["review_bias", "grade_reliability"],
+        "endpoint": "/api/agents/invoke",
+    },
 ]
 
 
@@ -479,7 +516,7 @@ def dispatch(env: dict[str, Any], db: Any = None) -> dict[str, Any]:
     handler = agent_handlers.get(env.get("intent", ""))
     if handler is None:
         raise ValueError(f"no handler for {env.get('to')}.{env.get('intent')}")
-    if env["to"] == "research-collector":
+    if env["to"] in ("research-collector", "evidence-scout"):
         return handler(env, db)
     return handler(env)
 
@@ -555,3 +592,241 @@ def run_security_a2a_workflow(
         "exec_evidence_refs": exec_refs,
         "a2a_trace": trace,
     }
+
+
+# ------------------------------------------------- prediction agents ---
+# Agentic forecasting: scout gathers weighted projection pools, forecaster
+# synthesizes disagreement-penalized scores, critic issues caveats. All
+# deterministic and explainable — no black boxes, every number has a reason.
+
+def _recency_weight(age_years: float | None) -> tuple[float, str]:
+    if age_years is None:
+        return 0.5, "undated source (weight 0.5)"
+    if age_years <= 1:
+        return 1.0, "published within a year (weight 1.0)"
+    if age_years <= 2:
+        return 0.7, "1–2 years old (weight 0.7)"
+    if age_years <= 5:
+        return 0.5, "2–5 years old (weight 0.5)"
+    return 0.3, "over 5 years old (weight 0.3)"
+
+
+def _weighted_quantile(values: list[float], weights: list[float], q: float) -> float:
+    order = sorted(zip(values, weights))
+    total = sum(weights)
+    if total <= 0:
+        return order[len(order) // 2][0] if order else 0.0
+    target = q * total
+    acc = 0.0
+    for v, w in order:
+        acc += w
+        if acc >= target:
+            return v
+    return order[-1][0]
+
+
+def _weighted_median(values: list[float], weights: list[float]) -> float:
+    return _weighted_quantile(values, weights, 0.5)
+
+
+def evidence_scout_handle(env: dict[str, Any], db: Any) -> dict[str, Any]:
+    """Intent `gather_forecasts`: weighted projection pools per type from DB."""
+    from datetime import datetime, timezone
+    if db is None:
+        return reply_envelope(env, "evidence-scout", "forecasts_gathered",
+                              {"pools": {}, "note": "no DB session — skipped"},
+                              note="skipped (no db)")
+    from .models import Artifact, Projection, Sentiment  # local import, no cycles
+
+    payload = env.get("payload", {})
+    year_from = payload.get("year_from")
+    year_to = payload.get("year_to")
+    source_year_from = payload.get("source_year_from")
+    source_year_to = payload.get("source_year_to")
+
+    artifacts = {a.id: a for a in db.query(Artifact).all()}
+    sentiments = {s.artifact_id: s for s in db.query(Sentiment).all()}
+    now_year = datetime.now(timezone.utc).year
+
+    def _parse_tf(tf: str | None) -> tuple | None:
+        import re
+        if not tf:
+            return None
+        m = re.search(r"(\d{4})(?:\s*[-–]\s*(\d{4}))?", tf)
+        if not m:
+            return None
+        return (int(m.group(1)), int(m.group(2)) if m.group(2) else int(m.group(1)))
+
+    pools: dict[str, list[dict[str, Any]]] = {}
+    skipped = 0
+    for p in db.query(Projection).all():
+        tf = _parse_tf(p.timeframe)
+        if year_from is not None or year_to is not None:
+            if tf is None:
+                skipped += 1
+                continue
+            if year_from is not None and tf[1] < year_from:
+                skipped += 1
+                continue
+            if year_to is not None and tf[0] > year_to:
+                skipped += 1
+                continue
+        a = artifacts.get(p.artifact_id)
+        if source_year_from is not None or source_year_to is not None:
+            if not (a and a.date_published):
+                skipped += 1
+                continue
+            py = a.date_published.year
+            if source_year_from is not None and py < source_year_from:
+                skipped += 1
+                continue
+            if source_year_to is not None and py > source_year_to:
+                skipped += 1
+                continue
+        age = (now_year - a.date_published.year) if (a and a.date_published) else None
+        w, w_reason = _recency_weight(age)
+        wb = bool(a and "whistleblower" in (a.tags or "").lower())
+        if wb:
+            w = min(1.2, w * 1.15)
+        s = sentiments.get(p.artifact_id)
+        auto = bool(s and (s.source or "").startswith("auto"))
+        if auto:
+            w *= 0.8
+        pools.setdefault(p.projection_type, []).append({
+            "confidence": p.confidence, "sentiment": s.score if s else 0.0,
+            "weight": round(w, 3), "weight_reason": w_reason,
+            "whistleblower": wb, "auto": auto, "age_years": age,
+            "artifact_id": p.artifact_id, "title": a.title if a else "?",
+            "summary": (p.summary or "")[:200],
+        })
+    return reply_envelope(
+        env, "evidence-scout", "forecasts_gathered",
+        {"pools": pools, "skipped_by_filters": skipped,
+         "types": sorted(pools)},
+        note=f"{sum(len(v) for v in pools.values())} projections pooled across {len(pools)} types",
+    )
+
+
+def forecaster_handle(env: dict[str, Any]) -> dict[str, Any]:
+    """Intent `synthesize`: weighted-median scores with disagreement penalties."""
+    pools: dict[str, list[dict[str, Any]]] = env.get("payload", {}).get("pools", {})
+    results: dict[str, dict[str, Any]] = {}
+    for ptype, items in pools.items():
+        confs = [i["confidence"] for i in items]
+        sents = [max(0.0, i["sentiment"]) for i in items]
+        weights = [i["weight"] for i in items]
+        wmed_conf = _weighted_median(confs, weights)
+        wmed_sent = _weighted_median(sents, weights)
+        q75 = _weighted_quantile(confs, weights, 0.75)
+        q25 = _weighted_quantile(confs, weights, 0.25)
+        iqr = round(q75 - q25, 3)
+        penalty = round(min(0.12, iqr * 0.25), 3)
+        stale_share = sum(1 for i in items if (i["age_years"] or 0) > 3) / len(items)
+        stale_discount = 0.05 if stale_share > 0.5 else 0.0
+        wb_hit = any(i["whistleblower"] for i in items)
+        boost = 0.03 if wb_hit else 0.0
+        raw = 0.7 * wmed_conf + 0.3 * wmed_sent - penalty - stale_discount + boost
+        score = round(min(1.0, max(0.0, raw)), 3)
+        rationale = [
+            f"Weighted-median confidence {wmed_conf:.2f} over {len(items)} forecasts (recency + source weighted).",
+            f"Disagreement IQR {iqr:.2f} → penalty −{penalty:.2f}.",
+        ]
+        if stale_discount:
+            rationale.append(f"Over half the evidence is >3y old → staleness discount −{stale_discount:.2f}.")
+        if wb_hit:
+            rationale.append("Corroborated by insider testimony → +0.03.")
+        if not wb_hit and stale_discount == 0 and penalty == 0:
+            rationale.append("Tight, fresh, uncorroborated consensus — no adjustments.")
+        results[ptype] = {
+            "score": score, "wmedian_confidence": round(wmed_conf, 3),
+            "wmedian_sentiment": round(wmed_sent, 3), "disagreement_iqr": iqr,
+            "penalty": penalty, "stale_discount": stale_discount,
+            "whistleblower_boost": boost, "n": len(items),
+            "auto_share": round(sum(1 for i in items if i["auto"]) / len(items), 2),
+            "stale_share": round(stale_share, 2),
+            "rationale": rationale,
+        }
+    return reply_envelope(env, "forecaster", "forecast_synthesized",
+                          {"forecasts": results}, note=f"{len(results)} type scores synthesized")
+
+
+def critic_handle(env: dict[str, Any]) -> dict[str, Any]:
+    """Intent `review`: bias caveats + reliability grades per type."""
+    forecasts: dict[str, dict[str, Any]] = env.get("payload", {}).get("forecasts", {})
+    reviews: dict[str, dict[str, Any]] = {}
+    for ptype, f in forecasts.items():
+        caveats = []
+        if f["n"] < 3:
+            caveats.append(f"Only {f['n']} forecast(s) — thin evidence, treat score as provisional.")
+        if f["auto_share"] >= 0.5:
+            caveats.append(f"{int(f['auto_share'] * 100)}% auto-ingested — regex sentiment/projection noise possible.")
+        if f["stale_share"] >= 0.5:
+            caveats.append("Majority of evidence predates the last 3 years of capability jumps.")
+        if f["disagreement_iqr"] >= 0.25:
+            caveats.append("Wide forecaster disagreement — consensus is weak even after penalty.")
+        reliability = ("high" if f["n"] >= 5 and f["auto_share"] < 0.5 and f["disagreement_iqr"] < 0.2
+                       else "medium" if f["n"] >= 3 else "low")
+        reviews[ptype] = {"reliability": reliability, "caveats": caveats}
+    return reply_envelope(env, "critic", "forecast_reviewed",
+                          {"reviews": reviews}, note=f"{len(reviews)} types reviewed")
+
+
+def run_prediction_workflow(
+    db: Any = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    source_year_from: int | None = None,
+    source_year_to: int | None = None,
+) -> dict[str, Any]:
+    """Orchestrator: scout → forecaster → critic. Never raises."""
+    task_id = new_task_id(prefix="fc")
+    trace: list[dict[str, Any]] = [{
+        "agent": "forecast-orchestrator", "intent": "plan_prediction",
+        "at": _now(), "note": f"task {task_id}: scout → forecaster → critic",
+    }]
+    pools: dict[str, Any] = {}
+    forecasts: dict[str, Any] = {}
+    reviews: dict[str, Any] = {}
+    skipped = 0
+    try:
+        env1 = new_envelope(
+            "forecast-orchestrator", "evidence-scout", "gather_forecasts",
+            {"year_from": year_from, "year_to": year_to,
+             "source_year_from": source_year_from, "source_year_to": source_year_to},
+            task_id=task_id, trace=trace, note="delegate forecast evidence gathering",
+        )
+        res1 = dispatch(env1, db)
+        trace = res1["trace"]
+        pools = res1["payload"].get("pools", {})
+        skipped = res1["payload"].get("skipped_by_filters", 0)
+
+        env2 = new_envelope(
+            "forecast-orchestrator", "forecaster", "synthesize",
+            {"pools": pools}, task_id=task_id, trace=trace,
+            note="synthesize weighted scores",
+        )
+        res2 = dispatch(env2, db)
+        trace = res2["trace"]
+        forecasts = res2["payload"].get("forecasts", {})
+
+        env3 = new_envelope(
+            "forecast-orchestrator", "critic", "review",
+            {"forecasts": forecasts}, task_id=task_id, trace=trace,
+            note="review bias, grade reliability",
+        )
+        res3 = dispatch(env3, db)
+        trace = res3["trace"]
+        reviews = res3["payload"].get("reviews", {})
+    except Exception as exc:
+        trace.append({"agent": "forecast-orchestrator", "intent": "workflow_error",
+                      "at": _now(), "note": f"{exc}"})
+    return {"task_id": task_id, "pools": pools, "forecasts": forecasts,
+            "reviews": reviews, "skipped_by_filters": skipped, "a2a_trace": trace}
+
+# Late registration: forecast handlers are defined above, wired here so the
+# module-level _HANDLERS dict stays valid at import time.
+_HANDLERS.update({
+    "evidence-scout": {"gather_forecasts": evidence_scout_handle},
+    "forecaster": {"synthesize": forecaster_handle},
+    "critic": {"review": critic_handle},
+})
