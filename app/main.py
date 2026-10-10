@@ -634,6 +634,187 @@ def _projection_published_in_year(p, artifacts_map, year):
     return False
 
 
+# ------------------------------------------------------------ timeline ---
+# "Where are we toward AGI, and what bridges the gap" — computed live from
+# the knowledge graph on every call, so the tab stays fresh as ingestion
+# (daily 04:00 UTC + manual Fetch) adds artifacts, projections, and warnings.
+
+# Gap dimensions: what it takes to bridge to safe AGI. Each dimension is a
+# live tag query over artifacts plus a statement of what "bridged" requires.
+TIMELINE_GAPS = [
+    {"id": "alignment", "title": "Alignment & control",
+     "tags": ["alignment", "superalignment", "control-problem", "deceptive-alignment",
+              "goal-misgeneralization", "mesa-optimization", "rlaif", "scalable-oversight"],
+     "bridged_when": "Formal guarantees (not empirical tuning) that superhuman systems pursue intended goals; deception detectable before deployment.",
+     "why_open": "Sleeper-agent and mesa-optimization results show deception persisting through RLHF; whistleblower testimony reports alignment deprioritized under product pressure."},
+    {"id": "evaluations", "title": "Evaluations & monitoring",
+     "tags": ["benchmark", "evaluations", "measurement", "interpretability", "wmdp",
+              "elk", "redteam", "audit"],
+     "bridged_when": "Pre-deployment safety cases with third-party audits, published evals, and post-deployment monitoring as deployment preconditions.",
+     "why_open": "Benchmarks underestimate capability growth; dangerous dual-use knowledge (WMDP) already measurable in frontier models without gating releases."},
+    {"id": "governance", "title": "Governance & policy",
+     "tags": ["governance", "regulation", "policy", "eu-act", "pause", "preparedness",
+              "agi-readiness", "coordination"],
+     "bridged_when": "Binding international oversight of frontier training and deployment, plus institutional AGI readiness (incident response, technical state capacity).",
+     "why_open": "EU AI Act sets precedent but targets narrow risk tiers; readiness memos warn neither labs nor governments can currently absorb AGI-speed change."},
+    {"id": "scaling", "title": "Capabilities & scaling trajectory",
+     "tags": ["scaling", "scaling-laws", "compute", "frontier", "capabilities",
+              "reasoning", "multimodal", "data-scarcity"],
+     "bridged_when": "A shared, evidence-based picture of how fast capabilities arrive — the timeline both camps plan against.",
+     "why_open": "Short-timeline (2027–2030) and long-timeline (2040–2050+) camps cite the same scaling curves; data scarcity vs. synthetic data is the open variable."},
+    {"id": "safety-culture", "title": "Safety culture & right to warn",
+     "tags": ["whistleblower", "safety-culture", "right-to-warn", "ethics",
+              "moral-policy", "retaliation"],
+     "bridged_when": "Durable insider-warning channels: no silencing agreements, anonymous reporting to boards/regulators, legal protection for good-faith disclosure.",
+     "why_open": "From Gebru (2020) to superalignment resignations (2024), internal ethics channels repeatedly failed without external power — the Right to Warn demands are still unmet."},
+]
+
+CAPABILITY_SIGNAL_TAGS = ["capabilities", "frontier", "scaling", "benchmarks",
+                          "reasoning", "multimodal", "alphafold", "breakthrough"]
+
+
+def _artifact_matches_tags(artifact_tags: str | None, wanted: list[str]) -> bool:
+    have = set(t.strip().lower() for t in (artifact_tags or "").split(",") if t.strip())
+    return bool(have & set(wanted))
+
+
+@app.get("/api/timeline")
+def get_timeline(db: Session = Depends(get_db)):
+    """Where we are toward AGI + what bridges the gap. Fully derived from the
+    live knowledge graph: median forecast year, horizon bands, per-gap evidence
+    counts, latest capability signals and whistleblower warnings, and ingestion
+    freshness — so the Timeline tab updates itself as the graph grows."""
+    now_year = datetime.now(timezone.utc).year
+    artifacts = db.query(Artifact).all()
+    projections = db.query(Projection).all()
+    sentiments = {s.artifact_id: s.score for s in db.query(Sentiment).all()}
+    art_map = {a.id: a for a in artifacts}
+
+    def _mini(a: Artifact) -> dict:
+        return {"id": a.id, "title": a.title, "artifact_type": a.artifact_type,
+                "author": a.author,
+                "date": a.date_published.isoformat() if a.date_published else None,
+                "tags": a.tags or "", "url": a.url or ""}
+
+    # Forecast distribution from parseable projection timeframes.
+    forecasts = []
+    for p in projections:
+        tf = parse_timeframe(p.timeframe)
+        if not tf:
+            continue
+        mid = (tf[0] + tf[1]) / 2
+        a = art_map.get(p.artifact_id)
+        forecasts.append({"year_mid": mid, "start": tf[0], "end": tf[1],
+                          "type": p.projection_type, "confidence": p.confidence,
+                          "summary": p.summary or "",
+                          "artifact": _mini(a) if a else None,
+                          "sentiment": sentiments.get(p.artifact_id)})
+    forecasts.sort(key=lambda f: f["year_mid"])
+    mids = sorted(f["year_mid"] for f in forecasts)
+
+    def _pct(vals: list[float], p: float):
+        if not vals:
+            return None
+        vals = sorted(vals)
+        return vals[min(len(vals) - 1, int(p / 100 * len(vals)))]
+
+    type_counts: dict[str, int] = {}
+    for f in forecasts:
+        type_counts[f["type"]] = type_counts.get(f["type"], 0) + 1
+
+    # Horizon bands: achieved, near (0–3y), mid (3–7y), far (7y+), undated.
+    bands = {"achieved": [], "near": [], "mid": [], "far": [], "undated": []}
+    for p in projections:
+        a = art_map.get(p.artifact_id)
+        entry = {"type": p.projection_type, "confidence": p.confidence,
+                 "timeframe": p.timeframe, "summary": p.summary or "",
+                 "artifact": _mini(a) if a else None}
+        tf = parse_timeframe(p.timeframe)
+        if not tf:
+            bands["undated"].append(entry)
+        elif tf[1] <= now_year:
+            bands["achieved"].append(entry)
+        elif tf[0] <= now_year + 3:
+            bands["near"].append(entry)
+        elif tf[0] <= now_year + 7:
+            bands["mid"].append(entry)
+        else:
+            bands["far"].append(entry)
+    for key in bands:
+        bands[key].sort(key=lambda e: -(e["confidence"] or 0))
+        bands[key] = bands[key][:10]
+
+    # Latest capability signals (last 24 months preferred, fallback to latest).
+    cutoff = now_year - 2
+    sigs = [a for a in artifacts
+            if _artifact_matches_tags(a.tags, CAPABILITY_SIGNAL_TAGS)]
+    sigs.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+              reverse=True)
+    recent_sigs = [a for a in sigs
+                   if a.date_published and a.date_published.year >= cutoff][:8]
+    if len(recent_sigs) < 4:
+        recent_sigs = sigs[:8]
+
+    # Whistleblower counterweight: latest warnings.
+    warns = [a for a in artifacts if _artifact_matches_tags(a.tags, ["whistleblower"])]
+    warns.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+               reverse=True)
+
+    # Gap dimensions with live evidence.
+    gaps = []
+    for g in TIMELINE_GAPS:
+        matched = [a for a in artifacts if _artifact_matches_tags(a.tags, g["tags"])]
+        matched.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+                     reverse=True)
+        recent = [a for a in matched
+                  if a.date_published and a.date_published.year >= now_year - 2]
+        neg = [sentiments.get(a.id, 0) for a in matched if a.id in sentiments]
+        avg_sent = round(sum(neg) / len(neg), 2) if neg else 0.0
+        gaps.append({"id": g["id"], "title": g["title"],
+                     "bridged_when": g["bridged_when"], "why_open": g["why_open"],
+                     "status": "open",
+                     "evidence_count": len(matched),
+                     "recent_count": len(recent),
+                     "avg_sentiment": avg_sent,
+                     "key_items": [_mini(a) for a in matched[:4]]})
+
+    return {
+        "now_year": now_year,
+        "where_we_are": {
+            "forecast_count": len(forecasts),
+            "median_agi_year": _pct(mids, 50),
+            "spread_p25": _pct(mids, 25),
+            "spread_p75": _pct(mids, 75),
+            "type_distribution": type_counts,
+            "by_year": _timeline_histogram(mids),
+        },
+        "horizon_bands": bands,
+        "gaps": gaps,
+        "recent_capability_signals": [_mini(a) for a in recent_sigs],
+        "latest_warnings": [_mini(a) for a in warns[:5]],
+        "warning_count": len(warns),
+        "freshness": {
+            "total_artifacts": len(artifacts),
+            "total_projections": len(projections),
+            "last_ingest": ingestion_stats.get("last_run"),
+            "ingest_runs": ingestion_stats.get("total_runs", 0),
+        },
+    }
+
+
+def _timeline_histogram(mids: list[float]) -> list[dict]:
+    """Forecast counts per 5-year bucket for the tab chart."""
+    if not mids:
+        return []
+    lo = int(min(mids)) // 5 * 5
+    hi = int(max(mids)) // 5 * 5
+    buckets = []
+    for start in range(lo, hi + 1, 5):
+        c = sum(1 for m in mids if start <= m < start + 5)
+        buckets.append({"bucket": f"{start}–{start + 4}", "count": c})
+    return buckets
+
+
 @app.post("/api/relationships")
 def create_relationship(data: RelationshipCreate, db: Session = Depends(get_db)):
     src = db.query(Artifact).filter(Artifact.id == data.source_id).first()

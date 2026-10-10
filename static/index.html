@@ -236,6 +236,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .sec-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--border); display: inline-block; }
 .sec-dots i.on-l { background: var(--accent); }
 .sec-dots i.on-i { background: var(--orange); }
+.tl-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; }
+.tl-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tl-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.tl-stat .v { font-size: 26px; font-weight: 800; color: var(--accent); }
+.tl-stat .l { font-size: 11px; color: var(--text2); margin-top: 4px; }
+.tl-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+.tl-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 12px; font-weight: 600; }
+.tl-road { position: relative; margin-left: 10px; padding-left: 22px; border-left: 2px solid var(--border); }
+.tl-band-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text); margin: 14px 0 8px; }
+.tl-node { position: relative; padding: 8px 0; font-size: 12px; }
+.tl-node::before { content: ''; position: absolute; left: -29px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); }
+.tl-node.achieved::before { background: var(--green); }
+.tl-type { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 8px; background: var(--bg3); color: var(--text2); margin-right: 6px; }
+.tl-gap { border-left: 3px solid var(--orange); }
+.tl-open { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 8px; border-radius: 8px; background: rgba(210,153,34,.15); color: var(--orange); }
+.tl-link { color: var(--accent); cursor: pointer; }
+.tl-fresh { font-size: 11px; color: var(--text2); text-align: center; padding: 8px; }
 .sec-hist-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
 .sec-exp-blurb { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
 .sec-sort { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11.5px; }
@@ -280,6 +297,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
     <div class="main-tabs">
       <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph</div>
       <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility</div>
+      <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline</div>
       <div class="main-tab" data-view="security" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
     <div class="main-content">
@@ -299,6 +317,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
         <div id="graph" style="height:100%;"></div>
       </div>
       <div id="plausibilityView"></div>
+      <div id="timelineView" style="display:none;height:100%;"></div>
       <div id="securityView">
         <div class="sec-grid">
           <div>
@@ -1144,9 +1163,83 @@ function switchMainView(view) {
   document.getElementById('plausibilityView').classList.toggle('visible', view === 'plausibility');
   document.getElementById('securityView').style.display = view === 'security' ? 'block' : 'none';
   document.getElementById('securityView').classList.toggle('visible', view === 'security');
+  document.getElementById('timelineView').style.display = view === 'timeline' ? 'block' : 'none';
+  if (view === 'timeline' && !timelineLoaded) { timelineLoaded = true; loadTimeline(); }
   if (view === 'graph' && network) setTimeout(() => network.fit({ animation: true }), 100);
   if (view === 'plausibility' && !plausibilityLoaded) { plausibilityLoaded = true; loadPlausibility(); }
   if (view === 'security' && window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: 'neutral' }); } catch (e) {} }
+}
+
+let timelineLoaded = false;
+let _tlChart = null;
+
+async function loadTimeline() {
+  const el = document.getElementById('timelineView');
+  el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Charting the road to AGI…</div>';
+  try {
+    const data = await (await fetch(`${API}/timeline`)).json();
+    renderTimeline(data);
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load timeline</div>';
+  }
+}
+
+function tlItem(e) {
+  const a = e.artifact;
+  const link = a ? `<a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 80))}</a>` : '';
+  return `<div class="tl-node"><span class="tl-type">${secEsc(e.type)}</span><strong>${secEsc(e.timeframe || '')}</strong> <span style="color:var(--text2)">· conf ${e.confidence}</span><br/>${secEsc((e.summary || '').slice(0, 220))}${link ? '<br/>' + link : ''}</div>`;
+}
+
+function renderTimeline(d) {
+  const el = document.getElementById('timelineView');
+  const w = d.where_we_are || {};
+  const dist = w.type_distribution || {};
+  const distHtml = Object.entries(dist).map(([k, v]) =>
+    `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;margin:3px 0;"><span style="width:120px;color:var(--text2);">${secEsc(k)}</span><div style="flex:1;background:var(--bg3);border-radius:4px;height:8px;"><div style="width:${Math.round(100 * v / Math.max(1, w.forecast_count))}%;background:var(--accent);height:8px;border-radius:4px;"></div></div><strong>${v}</strong></div>`).join('');
+  const bands = d.horizon_bands || {};
+  const bandMeta = [['achieved', 'Achieved — milestones whose window has closed'], ['near', 'Near horizon — next 3 years'], ['mid', 'Mid horizon — 3–7 years out'], ['far', 'Far horizon — 7+ years out']];
+  const roadHtml = bandMeta.map(([key, label]) => {
+    const items = bands[key] || [];
+    return `<div class="tl-band-label">${label} (${items.length})</div>` +
+      (items.map(e => tlItem(e)).join('') || '<div style="font-size:12px;color:var(--text2);">No dated forecasts in this band yet.</div>');
+  }).join('');
+  const gapsHtml = (d.gaps || []).map(g =>
+    `<div class="tl-card tl-gap"><h3>${secEsc(g.title)} <span class="tl-open">OPEN</span></h3>
+     <p style="font-size:12.5px;"><strong>Bridged when:</strong> ${secEsc(g.bridged_when)}</p>
+     <p style="font-size:12px;color:var(--text2);">${secEsc(g.why_open)}</p>
+     <p style="font-size:11.5px;">Evidence: <strong>${g.evidence_count}</strong> artifacts · <strong>${g.recent_count}</strong> in last 2 years · avg sentiment <strong>${g.avg_sentiment}</strong></p>
+     ${(g.key_items || []).map(a => `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a></div>`).join('')}</div>`).join('');
+  const sigs = (d.recent_capability_signals || []).map(a =>
+    `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a> <span style="color:var(--text2)">· ${(a.date || '').slice(0, 10)}</span></div>`).join('');
+  const warns = (d.latest_warnings || []).map(a =>
+    `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a></div>`).join('');
+  const f = d.freshness || {};
+  el.innerHTML = `<div class="tl-wrap">
+    <div class="tl-card"><h3><i class="fas fa-hourglass-half"></i> Where we are toward AGI <button class="btn btn-sm" style="float:right;" onclick="timelineLoaded=true;loadTimeline();"><i class="fas fa-rotate"></i> Refresh</button></h3>
+      <div class="tl-hero">
+        <div class="tl-stat"><div class="v">${w.median_agi_year != null ? Math.round(w.median_agi_year) : '—'}</div><div class="l">median forecast AGI year (${w.forecast_count || 0} dated forecasts)</div></div>
+        <div class="tl-stat"><div class="v">${w.spread_p25 != null ? Math.round(w.spread_p25) + '–' + Math.round(w.spread_p75) : '—'}</div><div class="l">interquartile spread (p25–p75)</div></div>
+        <div class="tl-stat"><div class="v">${d.warning_count || 0}</div><div class="l">whistleblower warnings on record</div></div>
+        <div class="tl-stat"><div class="v">${f.total_artifacts || 0}</div><div class="l">artifacts in knowledge graph</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;">
+        <div><h4 style="font-size:12px;margin-bottom:6px;">Forecasts per 5-year bucket</h4><canvas id="tlChart" height="170"></canvas></div>
+        <div><h4 style="font-size:12px;margin-bottom:6px;">Forecast mix by type</h4>${distHtml}</div>
+      </div>
+    </div>
+    <div class="tl-card"><h3><i class="fas fa-route"></i> Milestone road — dated projections</h3><div class="tl-road">${roadHtml}</div></div>
+    <div class="tl-card"><h3><i class="fas fa-flask"></i> Latest capability signals</h3>${sigs || '<span style="color:var(--text2)">None yet.</span>'}</div>
+    ${warns ? `<div class="tl-card"><h3><i class="fas fa-triangle-exclamation"></i> Latest insider warnings</h3>${warns}</div>` : ''}
+    <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:18px 0 12px;">What it takes to bridge there — 5 open gaps</h3>
+    ${gapsHtml}
+    <div class="tl-fresh">Live from the knowledge graph · ${f.total_artifacts || 0} artifacts · ${f.total_projections || 0} projections · last ingest ${f.last_ingest || 'not run yet'} · refreshes with every ingestion run.</div>
+  </div>`;
+  if (window.Chart && document.getElementById('tlChart')) {
+    try { if (_tlChart) _tlChart.destroy(); } catch (e) {}
+    _tlChart = new Chart(document.getElementById('tlChart'), { type: 'bar',
+      data: { labels: (w.by_year || []).map(b => b.bucket), datasets: [{ label: 'forecasts', data: (w.by_year || []).map(b => b.count), backgroundColor: '#58a6ff' }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  }
 }
 
 async function loadPlausibility() {

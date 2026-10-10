@@ -175,6 +175,19 @@ Represents the aggregate credibility-weighted outlook across all collected proje
   - List of contributing artifacts
 - Staggered card entrance animations (200ms + 180ms offset per card)
 
+### Timeline Tab — Road to AGI
+- **Where we are**: median forecast AGI year + interquartile spread, forecast
+  mix by type, 5-year-bucket chart — all computed live from dated projections
+  (`GET /api/timeline`)
+- **Milestone road**: dated projections grouped into achieved / near (0–3y) /
+  mid (3–7y) / far (7+y) bands, click through to the source artifact
+- **What it takes to bridge there**: 5 open gaps (alignment & control,
+  evaluations & monitoring, governance & policy, capabilities trajectory,
+  safety culture & right to warn), each with live evidence counts, recent
+  items, and the condition that would close it
+- **Self-updating**: every number derives from the knowledge graph, so daily
+  ingestion and new whistleblower warnings move the tab with no manual edits
+
 ### Right Panel (Collapsible)
 - **Add** — manual artifact creation with sentiment and projection fields
 - **Relate** — create relationships between any two artifacts
@@ -201,6 +214,7 @@ Represents the aggregate credibility-weighted outlook across all collected proje
 | GET | `/api/graph` | Full graph data (nodes + edges for vis-network) |
 | GET | `/api/stats` | Aggregate stats (counts, avg sentiment, projection breakdown) |
 | GET | `/api/plausibility` | Per-type plausibility with summaries and supporting artifacts |
+| GET | `/api/timeline` | Median AGI year, horizon bands, bridge gaps, freshness (live) |
 | POST | `/api/relationships` | Create relationship |
 | POST | `/api/ingest/run` | Trigger scraper (runs in background) |
 | GET | `/api/ingest/status` | Last run, items fetched, total runs |
