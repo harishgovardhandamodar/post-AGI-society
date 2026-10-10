@@ -887,6 +887,287 @@ def get_timeline(db: Session = Depends(get_db)):
     }
 
 
+# ------------------------------------------------- professions ---
+# Profession-capture tracker: what AI has already taken over vs. what it is
+# projected to consume. Fully evidence-driven — every status and confidence
+# score is recomputed live from the current graph on each call, so Fetch /
+# ingestion runs move the numbers with no manual edits.
+
+PROFESSIONS = [
+    {"id": "software", "name": "Software engineering", "icon": "fa-code",
+     "tags": ["code", "software", "programming", "copilot", "coding", "swe-bench", "agents"],
+     "blurb": "Code generation, debugging, and agentic software tasks."},
+    {"id": "support", "name": "Customer support", "icon": "fa-headset",
+     "tags": ["support", "chatbot", "call-center", "helpdesk", "service"],
+     "blurb": "Tier-1 support chats, call handling, and ticket triage."},
+    {"id": "translation", "name": "Translation", "icon": "fa-language",
+     "tags": ["translation", "multilingual", "language"],
+     "blurb": "Routine professional translation across major languages."},
+    {"id": "writing", "name": "Copywriting & content", "icon": "fa-pen-nib",
+     "tags": ["copywriting", "content", "marketing", "journalism", "writing"],
+     "blurb": "Marketing copy, SEO content, drafts, and routine reporting."},
+    {"id": "data-entry", "name": "Data entry & processing", "icon": "fa-keyboard",
+     "tags": ["data-entry", "ocr", "document", "extraction", "rpa", "automation"],
+     "blurb": "Form processing, OCR pipelines, and back-office data work."},
+    {"id": "design", "name": "Graphic design & media", "icon": "fa-palette",
+     "tags": ["design", "image-generation", "diffusion", "video", "multimodal", "art"],
+     "blurb": "Stock imagery, concept art, layouts, and short-form video."},
+    {"id": "legal", "name": "Paralegal & legal research", "icon": "fa-scale-balanced",
+     "tags": ["legal", "paralegal", "contracts", "discovery", "compliance"],
+     "blurb": "Document review, discovery, contract drafting assistance."},
+    {"id": "finance", "name": "Accounting & analysis", "icon": "fa-calculator",
+     "tags": ["accounting", "bookkeeping", "auditing", "finance", "analyst"],
+     "blurb": "Bookkeeping, reconciliation, and first-pass financial analysis."},
+    {"id": "diagnostics", "name": "Medical diagnostics", "icon": "fa-stethoscope",
+     "tags": ["radiology", "diagnostics", "alphafold", "drug-discovery", "pathology", "medical"],
+     "blurb": "Image-based diagnosis support, protein folding, drug pipelines."},
+    {"id": "tutoring", "name": "Tutoring & education", "icon": "fa-graduation-cap",
+     "tags": ["tutoring", "education", "teaching", "edtech"],
+     "blurb": "Personalized tutoring, grading assistance, curriculum drafts."},
+    {"id": "driving", "name": "Driving & delivery", "icon": "fa-truck-fast",
+     "tags": ["autonomous", "self-driving", "delivery", "logistics", "transport"],
+     "blurb": "Highway autonomy, warehouse robotics, last-mile pilots."},
+    {"id": "manufacturing", "name": "Manufacturing & inspection", "icon": "fa-industry",
+     "tags": ["manufacturing", "robotics", "inspection", "quality", "factory"],
+     "blurb": "Visual inspection, pick-and-place, predictive maintenance."},
+    {"id": "science", "name": "Scientific research", "icon": "fa-flask",
+     "tags": ["science", "research", "discovery", "breakthrough", "alphafold", "materials"],
+     "blurb": "Literature synthesis, hypothesis generation, lab automation."},
+    {"id": "music", "name": "Music & creative writing", "icon": "fa-music",
+     "tags": ["music", "fiction", "screenwriting", "creative", "poetry"],
+     "blurb": "Functional music, first drafts, and assisted composition."},
+]
+
+FUTURE_WORK_KEYWORDS = ["job", "employment", "unemploy", "automat", "labor", "labour",
+                        "workforce", "post-work", "economic-activity", "displace",
+                        "replace human", "replace majority", "occupation"]
+
+
+@app.get("/api/timeline/professions")
+def get_profession_capture(db: Session = Depends(get_db)):
+    """What AI has captured so far vs. projected future consumption.
+
+    Statuses and confidence scores are recomputed live from the graph:
+    evidence counts, recency, source-type diversity, and linked projection
+    confidence — so every Fetch/ingestion run revisits them.
+    """
+    now_year = datetime.now(timezone.utc).year
+    artifacts = db.query(Artifact).all()
+    projections = db.query(Projection).all()
+    art_map = {a.id: a for a in artifacts}
+
+    def _mini(a: Artifact) -> dict:
+        return {"id": a.id, "title": a.title, "artifact_type": a.artifact_type,
+                "date": a.date_published.isoformat() if a.date_published else None}
+
+    def _age_years(a: Artifact):
+        if not a.date_published:
+            return None
+        try:
+            base = a.date_published
+            if base.tzinfo is None:
+                base = base.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - base).total_seconds() / 31536000
+        except Exception:
+            return None
+
+    captured = []
+    for prof in PROFESSIONS:
+        matched = [a for a in artifacts if _artifact_matches_tags(a.tags, prof["tags"])]
+        matched.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+                     reverse=True)
+        n = len(matched)
+        recent = [a for a in matched if (_age_years(a) or 99) <= 2]
+        types = {a.artifact_type for a in matched}
+        linked = [pr for pr in projections
+                  if art_map.get(pr.artifact_id) in matched]
+        avg_conf = (sum(pr.confidence for pr in linked) / len(linked)) if linked else 0.0
+        if n >= 4 and recent:
+            status = "captured"
+        elif n >= 2:
+            status = "emerging"
+        elif n == 1:
+            status = "exposed"
+        else:
+            status = "monitored"
+        score = min(95, 15 + 9 * min(n, 6) + (8 if recent else 0)
+                    + (7 if len(types) >= 3 else 0) + round(10 * avg_conf))
+        captured.append({
+            "id": prof["id"], "name": prof["name"], "icon": prof["icon"],
+            "blurb": prof["blurb"], "status": status, "confidence": score,
+            "evidence_count": n, "recent_count": len(recent),
+            "source_types": sorted(types),
+            "linked_projections": len(linked),
+            "components": {"base": 15, "evidence": 9 * min(n, 6),
+                           "recency": 8 if recent else 0,
+                           "diversity": 7 if len(types) >= 3 else 0,
+                           "projection": round(10 * avg_conf)},
+            "key_items": [_mini(a) for a in matched[:3]],
+        })
+    captured.sort(key=lambda c: (-c["confidence"], -c["evidence_count"]))
+
+    # Future consumption: workforce/automation projections with horizons.
+    future = []
+    for pr in projections:
+        a = art_map.get(pr.artifact_id)
+        hay = f"{pr.summary or ''} {pr.timeframe or ''} {(a.title if a else '')} {(a.tags if a else '')}".lower()
+        if not any(k in hay for k in FUTURE_WORK_KEYWORDS):
+            continue
+        tf = parse_timeframe(pr.timeframe)
+        profs = [pf["name"] for pf in PROFESSIONS
+                 if _artifact_matches_tags(a.tags if a else "", pf["tags"])]
+        future.append({"type": pr.projection_type, "confidence": pr.confidence,
+                       "timeframe": pr.timeframe, "start": tf[0] if tf else None,
+                       "summary": _clean_text(pr.summary, 220),
+                       "professions": profs[:3], "artifact": _mini(a) if a else None})
+    future.sort(key=lambda e: ((e["start"] or 9999), -(e["confidence"] or 0)))
+
+    return {
+        "now_year": now_year,
+        "captured": captured,
+        "captured_count": sum(1 for c in captured if c["status"] == "captured"),
+        "future": future[:15],
+        "future_count": len(future),
+        "freshness": {"total_artifacts": len(artifacts),
+                      "total_projections": len(projections),
+                      "last_ingest": ingestion_stats.get("last_run")},
+        "method": ("Status from live evidence (4+ items incl. recent = captured, "
+                   "2+ = emerging, 1 = exposed, else monitored). Confidence = 15 base + "
+                   "9/evidence item (max 6) + 8 recency + 7 source diversity + "
+                   "10x linked projection confidence, capped at 95. Recomputed on every call."),
+    }
+
+
+HUMAN_EDGE = [
+    {"id": "moral", "name": "Moral judgment & accountability", "icon": "fa-scale-balanced",
+     "tags": ["ethics", "moral-policy", "accountability", "liability"],
+     "threat_tags": ["autonomous", "agents", "decision"],
+     "irreducible": "Someone must answer for outcomes. Responsibility cannot be outsourced — only exercised.",
+     "blurb": "Courts, boards, and commanders deciding right from wrong."},
+    {"id": "oversight", "name": "AI safety oversight & auditing", "icon": "fa-shield-halved",
+     "tags": ["superalignment", "evaluations", "audit", "redteam", "interpretability", "oversight"],
+     "threat_tags": ["capabilities", "scaling", "automation"],
+     "irreducible": "Only intelligence outside the system can check the system. Oversight collapses if the overseer is the model itself.",
+     "blurb": "Independent evaluators, auditors, and interpretability researchers."},
+    {"id": "science-taste", "name": "Scientific taste & paradigm shifts", "icon": "fa-lightbulb",
+     "tags": ["science", "discovery", "breakthrough", "paradigm"],
+     "threat_tags": ["automated", "scaling", "agents"],
+     "irreducible": "Choosing which questions matter is a value judgment, not an optimization.",
+     "blurb": "Framing problems, abandoning dead paradigms, betting on the unproven."},
+    {"id": "care", "name": "Empathic care", "icon": "fa-hand-holding-heart",
+     "tags": ["care", "therapy", "nursing", "empathy", "health", "childcare"],
+     "threat_tags": ["chatbot", "companion", "automation"],
+     "irreducible": "Being cared for by someone who could choose otherwise. Simulated empathy has no moral weight.",
+     "blurb": "Therapy, nursing, childcare, eldercare, hospice."},
+    {"id": "trades", "name": "Embodied skilled trades", "icon": "fa-screwdriver-wrench",
+     "tags": ["trades", "dexterity", "plumbing", "electrical", "construction", "craft"],
+     "threat_tags": ["robotics", "humanoid", "automation"],
+     "irreducible": "Unstructured physical world + human homes. Dexterity plus judgment in places robots rarely go.",
+     "blurb": "Electricians, plumbers, builders, repair generalists."},
+    {"id": "law", "name": "Law & adjudication", "icon": "fa-gavel",
+     "tags": ["legal", "law", "courts", "judges", "justice"],
+     "threat_tags": ["contracts", "discovery", "automation"],
+     "irreducible": "Legitimacy requires judgment by peers under law — a sentence computed is not justice delivered.",
+     "blurb": "Judges, juries, and the legitimacy of the bench."},
+    {"id": "meaning", "name": "Creative authorship & meaning", "icon": "fa-feather-pointed",
+     "tags": ["creative", "authorship", "fiction", "art", "meaning"],
+     "threat_tags": ["image-generation", "content", "automation"],
+     "irreducible": "Art matters because a human meant it. Audiences pay for intention, not output.",
+     "blurb": "Authors, artists, and makers whose intent is the product."},
+    {"id": "diplomacy", "name": "Diplomacy & trust negotiation", "icon": "fa-handshake",
+     "tags": ["diplomacy", "negotiation", "trust", "coordination", "treaty"],
+     "threat_tags": ["agents", "automation", "surveillance"],
+     "irreducible": "Peace is credible commitment between minds that can defect. Machines cannot promise.",
+     "blurb": "Negotiators, mediators, and treaty builders."},
+    {"id": "spirit", "name": "Spiritual & religious life", "icon": "fa-place-of-worship",
+     "tags": ["religion", "spiritual", "faith", "pastoral"],
+     "threat_tags": ["companion", "chatbot", "content"],
+     "irreducible": "Faith is a relationship with the transcendent through human community — not content delivery.",
+     "blurb": "Clergy, pastoral care, and communal practice."},
+    {"id": "mentorship", "name": "Education & human formation", "icon": "fa-person-chalkboard",
+     "tags": ["education", "teaching", "mentorship", "formation"],
+     "threat_tags": ["tutoring", "edtech", "automation"],
+     "irreducible": "Becoming a person happens between people. A tutor can inform; only a mentor can form.",
+     "blurb": "Teachers and mentors shaping judgment, not just knowledge."},
+]
+
+
+@app.get("/api/timeline/human-edge")
+def get_human_edge(db: Session = Depends(get_db)):
+    """Technologies and sectors that still need human intelligence.
+
+    Resilience scores recomputed live: human-side discourse evidence minus
+    automation encroachment, plus cautionary-projection support — so Fetch /
+    ingestion revisits every number.
+    """
+    artifacts = db.query(Artifact).all()
+    projections = db.query(Projection).all()
+    art_map = {a.id: a for a in artifacts}
+
+    def _mini(a: Artifact) -> dict:
+        return {"id": a.id, "title": a.title, "artifact_type": a.artifact_type,
+                "date": a.date_published.isoformat() if a.date_published else None}
+
+    def _recent(a: Artifact) -> bool:
+        if not a.date_published:
+            return False
+        try:
+            base = a.date_published
+            if base.tzinfo is None:
+                base = base.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - base).total_seconds() < 2 * 31536000
+        except Exception:
+            return False
+
+    areas = []
+    for he in HUMAN_EDGE:
+        human = [a for a in artifacts if _artifact_matches_tags(a.tags, he["tags"])]
+        encroach = [a for a in artifacts if _artifact_matches_tags(a.tags, he["threat_tags"])]
+        human.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+                   reverse=True)
+        encroach.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+                      reverse=True)
+        linked = [pr for pr in projections if art_map.get(pr.artifact_id) in human]
+        caution = [pr for pr in linked if pr.projection_type in ("cautionary", "neutral")]
+        avg_c = (sum(pr.confidence for pr in caution) / len(caution)) if caution else 0.0
+        hn, en = len(human), len(encroach)
+        score = max(10, min(95, 45 + 8 * min(hn, 4) + (6 if any(_recent(a) for a in human) else 0)
+                            + round(10 * avg_c) - 8 * min(en, 4)))
+        status = "durable" if score >= 60 else ("contested" if score >= 40 else "eroding")
+        areas.append({
+            "id": he["id"], "name": he["name"], "icon": he["icon"],
+            "blurb": he["blurb"], "irreducible": he["irreducible"],
+            "status": status, "resilience": score,
+            "human_evidence": hn, "encroachment": en,
+            "recent_human": any(_recent(a) for a in human),
+            "cautionary_support": round(avg_c, 2),
+            "components": {"base": 45, "discourse": 8 * min(hn, 4),
+                           "recency": 6 if any(_recent(a) for a in human) else 0,
+                           "projection": round(10 * avg_c),
+                           "encroachment": -8 * min(en, 4)},
+            "key_items": [_mini(a) for a in human[:3]],
+            "watch_signals": [_mini(a) for a in encroach[:3]],
+            "supporting": [{"type": pr.projection_type, "confidence": pr.confidence,
+                            "timeframe": pr.timeframe,
+                            "summary": _clean_text(pr.summary, 160),
+                            "artifact": _mini(art_map[pr.artifact_id]) if art_map.get(pr.artifact_id) else None}
+                           for pr in sorted(caution, key=lambda pr: -(pr.confidence or 0))[:3]],
+        })
+    areas.sort(key=lambda x: (-x["resilience"], -x["human_evidence"]))
+    return {
+        "now_year": datetime.now(timezone.utc).year,
+        "areas": areas,
+        "durable_count": sum(1 for x in areas if x["status"] == "durable"),
+        "contested_count": sum(1 for x in areas if x["status"] == "contested"),
+        "freshness": {"total_artifacts": len(artifacts),
+                      "total_projections": len(projections),
+                      "last_ingest": ingestion_stats.get("last_run")},
+        "method": ("Resilience = 45 base + 8/human-discourse item (max 4) + 6 recent + "
+                   "10x cautionary projection confidence − 8/encroaching item (max 4), "
+                   "clamped 10–95. Durable ≥60, contested 40–59, eroding <40. Recomputed on every call."),
+    }
+
+
 def _timeline_histogram(mids: list[float]) -> list[dict]:
     """Forecast counts per 5-year bucket for the tab chart."""
     if not mids:
