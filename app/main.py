@@ -1168,6 +1168,94 @@ def get_human_edge(db: Session = Depends(get_db)):
     }
 
 
+SAFETY_TAGS = ["safety", "alignment", "superalignment", "xrisk", "existential-risk",
+               "control-problem", "deceptive-alignment", "goal-misgeneralization",
+               "mesa-optimization", "interpretability", "evaluations", "redteam", "audit",
+               "oversight", "sleeper-agents", "backdoor", "jailbreak", "refusal",
+               "uncontrollability", "misalignment", "corrigibility", "wmdp", "elk",
+               "rlaif", "scalable-oversight", "moral-policy", "right-to-warn"]
+
+
+@app.get("/api/timeline/safety")
+def get_safety_dimension(db: Session = Depends(get_db)):
+    """AI safety as a cross-collection dimension: every artifact type's safety
+    content, corpus sentiment vs. overall, top safety projections, and insider
+    warnings — recomputed live on each call."""
+    artifacts = db.query(Artifact).all()
+    projections = db.query(Projection).all()
+    sentiments = {s.artifact_id: s.score for s in db.query(Sentiment).all()}
+    art_map = {a.id: a for a in artifacts}
+
+    def _mini(a: Artifact) -> dict:
+        return {"id": a.id, "title": a.title, "artifact_type": a.artifact_type,
+                "author": a.author,
+                "date": a.date_published.isoformat() if a.date_published else None,
+                "sentiment": sentiments.get(a.id)}
+
+    def _recent(a: Artifact) -> bool:
+        if not a.date_published:
+            return False
+        try:
+            base = a.date_published
+            if base.tzinfo is None:
+                base = base.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - base).total_seconds() < 2 * 31536000
+        except Exception:
+            return False
+
+    safety = [a for a in artifacts if _artifact_matches_tags(a.tags, SAFETY_TAGS)]
+    safety.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+                reverse=True)
+    by_type: dict[str, dict] = {}
+    for a in safety:
+        bucket = by_type.setdefault(a.artifact_type or "unknown",
+                                    {"count": 0, "recent": 0, "top": []})
+        bucket["count"] += 1
+        if _recent(a):
+            bucket["recent"] += 1
+        if len(bucket["top"]) < 3:
+            bucket["top"].append(_mini(a))
+    sents = [sentiments[a.id] for a in safety if a.id in sentiments]
+    all_sents = list(sentiments.values())
+    avg_safety = round(sum(sents) / len(sents), 2) if sents else 0.0
+    avg_all = round(sum(all_sents) / len(all_sents), 2) if all_sents else 0.0
+
+    safety_ids = {a.id for a in safety}
+    top_projs = sorted(
+        (pr for pr in projections if pr.artifact_id in safety_ids),
+        key=lambda pr: (-(pr.confidence or 0)))[:8]
+    proj_items = []
+    for pr in top_projs:
+        a = art_map.get(pr.artifact_id)
+        proj_items.append({"type": pr.projection_type, "confidence": pr.confidence,
+                           "timeframe": pr.timeframe,
+                           "summary": _clean_text(pr.summary, 180),
+                           "artifact": _mini(a) if a else None})
+    wb = [a for a in safety if "whistleblower" in (a.tags or "").lower()]
+    wb.sort(key=lambda a: a.date_published or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True)
+    return {
+        "now_year": datetime.now(timezone.utc).year,
+        "total": len(safety),
+        "recent_count": sum(1 for a in safety if _recent(a)),
+        "by_type": by_type,
+        "collection_types": len(by_type),
+        "avg_sentiment_safety": avg_safety,
+        "avg_sentiment_overall": avg_all,
+        "sentiment_gap": round(avg_safety - avg_all, 2),
+        "top_projections": proj_items,
+        "whistleblower_count": len(wb),
+        "latest_warnings": [_mini(a) for a in wb[:4]],
+        "latest_items": [_mini(a) for a in safety[:6]],
+        "freshness": {"total_artifacts": len(artifacts),
+                      "total_projections": len(projections),
+                      "last_ingest": ingestion_stats.get("last_run")},
+        "method": ("Safety corpus = artifacts tagged with 27 safety keywords across all "
+                   "9 collection types. Sentiment gap = safety avg − overall avg "
+                   "(negative = safety discourse runs more concerned). Recomputed on every call."),
+    }
+
+
 def _timeline_histogram(mids: list[float]) -> list[dict]:
     """Forecast counts per 5-year bucket for the tab chart."""
     if not mids:
