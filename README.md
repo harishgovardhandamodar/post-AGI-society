@@ -246,8 +246,11 @@ post-AGI-society/
 │   ├── main.py          # FastAPI routes, scheduler, CORS
 │   ├── database.py      # SQLAlchemy engine (WAL mode + busy_timeout)
 │   ├── models.py        # ORM: Artifact, Sentiment, Projection, Relationship
-│   ├── scraper.py       # RSS/Nitter/arXiv ingestion pipeline
-│   └── seed_data.py     # 63 curated artifacts + 74 relationships
+│   ├── scraper.py       # RSS/Nitter/arXiv ingestion pipeline (+whistleblower testimony detection)
+│   ├── security.py      # Deterministic assessment engine (STRIDE + OWASP LLM, mermaid, Markdown/PDF)
+│   ├── security_analytics.py  # Research analytics: coverage, grades, what-if, Monte Carlo, kill-chains, κ
+│   ├── agents.py        # A2A protocol: orchestrator → research-collector → threat-intel → report-writer
+│   └── seed_data.py     # 71 curated artifacts + 96 relationships (incl. 8 diarized whistleblower records)
 ├── data/                # SQLite database (gitignored, persisted via Docker volume)
 ├── static/
 │   └── index.html       # Single-page dashboard (all CSS/JS inline)
@@ -258,6 +261,69 @@ post-AGI-society/
 ├── requirements.txt
 └── README.md
 ```
+
+---
+
+## AI Security Research Workbench
+
+The **AI Security** tab runs a deterministic assessment agent and now doubles as a
+PhD-level research workbench (charts, experiments, gap analysis, collaboration).
+
+### Assessment engine
+- 12-threat catalog (T01–T12) with STRIDE + OWASP LLM mapping, exposure-tier
+  likelihood scaling, L×I scoring, 0–100 overall + posture label (`app/security.py`)
+- A2A workflow (orchestrator → research-collector → threat-intel → report-writer)
+  with auditable trace; research-collector cites this app's own knowledge graph
+  (papers, whistleblower testimonies) as evidence (`app/agents.py`)
+- Markdown + PDF report with Mermaid dataflow/threat-path/workflow diagrams
+
+### Analytics & charts (`GET /api/security/assessments/{id}/analytics`)
+- Severity distribution (bar), STRIDE breakdown (donut), L×I scatter, OWASP radar
+- Clickable 5×5 risk heat-map filtering the threat register
+- Sensitivity tornado (L±1 swing per threat) + Monte Carlo uncertainty
+  (L/I ±1, n=1000 → P5/P25/P50/P75/P90 + histogram)
+
+### Coverage & gap analysis
+- Per-threat mapping to **OWASP LLM Top-10 2025**, **MITRE ATLAS**, **NIST AI RMF**,
+  **LINDDUN** privacy categories (`GET /api/security/coverage`)
+- Uncovered OWASP classes / RMF functions / LINDDUN categories surfaced as gaps
+- Evidence grading A/B/C/D (source tier + relevance + recency + corroboration)
+
+### Experiment workbench
+- **What-if lab**: per-threat ΔL toggles → counterfactual overall
+  (`POST .../whatif`)
+- **Kill-chain composer**: 5 curated multi-hop attack paths with Mermaid
+  (`GET .../killchain`)
+- **Red-team harness**: 6 built-in probes (injection, laundering, DLP, over-disclosure,
+  mislabel) with pass/fail logging (`POST .../redteam`)
+- **Hypothesis registry**: preregistered statements + predictions + observations
+  (`POST .../hypotheses`)
+
+### Group collaboration & reporting
+- Assessment versioning (`POST .../clone` → v2, parent link), peer review
+  (2 approvals → published), inter-rater reliability (Cohen's κ on L/I)
+- Compare runs (`GET /api/security/compare?ids=1,2`), exports
+  (ZIP reproducibility pack, threats CSV, evidence BibTeX, Markdown, PDF)
+
+### API endpoints (security)
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/security/assess` | Run assessment (+A2A evidence workflow) |
+| GET | `/api/security/assessments` | History (latest 50) |
+| GET | `/api/security/assessments/{id}` | Full assessment JSON |
+| GET | `/api/security/assessments/{id}/analytics` | Charts + coverage + MC + kill-chains |
+| POST | `/api/security/assessments/{id}/whatif` | Counterfactual recomputation |
+| GET | `/api/security/compare?ids=` | Cross-run threat matrix + deltas |
+| GET | `/api/security/assessments/{id}/killchain` | Attack-path chains + Mermaid |
+| GET | `/api/security/assessments/{id}/export.zip` | Reproducibility pack |
+| GET | `/api/security/assessments/{id}/threats.csv` | Threat register CSV |
+| GET | `/api/security/assessments/{id}/evidence.bib` | Evidence BibTeX |
+| POST | `/api/security/assessments/{id}/redteam` | Log probe results |
+| POST | `/api/security/assessments/{id}/hypotheses` | Register hypotheses |
+| POST | `/api/security/assessments/{id}/reviews` | Peer review (2 approvals publish) |
+| POST | `/api/security/assessments/{id}/ratings` | Independent L/I ratings + Cohen's κ |
+| POST | `/api/security/assessments/{id}/clone` | New version (parent-linked draft) |
+| GET | `/api/security/coverage` | Framework reference data |
 
 ---
 
