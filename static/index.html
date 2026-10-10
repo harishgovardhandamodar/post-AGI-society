@@ -1472,7 +1472,7 @@ async function loadAgents() {
   const el = document.getElementById('agentsView');
   el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Loading agent registry…</div>';
   try {
-    const reg = await (await fetch(`${API}/api/agents/cards`)).json();
+    const reg = await (await fetch(`${API}/agents/cards`)).json();
     renderAgents(reg.agents || [], reg.protocol || 'a2a/1.0');
   } catch (e) {
     el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load agent registry</div>';
@@ -1526,7 +1526,7 @@ async function invokeAgent() {
   try { payload = JSON.parse(document.getElementById('agentPayload').value || '{}'); }
   catch (e) { out.textContent = 'Invalid JSON payload: ' + e.message; return; }
   try {
-    const res = await fetch(`${API}/api/agents/invoke`, { method: 'POST',
+    const res = await fetch(`${API}/agents/invoke`, { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: document.getElementById('agentTo').value, intent: document.getElementById('agentIntent').value, payload }) });
     const data = await res.json();
