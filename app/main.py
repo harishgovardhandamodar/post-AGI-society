@@ -15,9 +15,10 @@ from sqlalchemy import func
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from .database import init_db, get_db
-from .models import Artifact, Sentiment, Projection, Relationship, ArtifactType
+from .models import Artifact, Sentiment, Projection, Relationship, ArtifactType, SecurityAssessment
 from .seed_data import seed_database
 from .scraper import run_ingestion
+from . import security as sec_agent
 
 ingestion_stats = {"last_run": None, "items_fetched": 0, "total_runs": 0}
 ingestion_lock = threading.Lock()
@@ -66,6 +67,7 @@ atexit.register(lambda: scheduler.shutdown(wait=False))
 @app.on_event("startup")
 def on_start():
     init_db()
+    _ensure_security_columns()
     db = next(get_db())
     try:
         seed_database(db)
@@ -96,6 +98,16 @@ class RelationshipCreate(BaseModel):
     target_id: int
     relationship_type: str
     description: Optional[str] = None
+
+
+class SecurityAssessRequest(BaseModel):
+    product_name: Optional[str] = ""
+    product_url: Optional[str] = ""
+    exposure: Optional[str] = "confidential_data"
+    use_case: Optional[str] = ""
+    workflow_text: Optional[str] = ""
+    doc_urls: Optional[list[str]] = []
+    focus: Optional[list[str]] = ["accidental_copy", "misclassification"]
 
 
 @app.get("/api/health")
@@ -773,6 +785,187 @@ def search(q: str = Query(...), db: Session = Depends(get_db)):
         .all()
     )
     return {"items": [_artifact_json(a) for a in results]}
+
+
+@app.post("/api/security/assess")
+def security_assess(data: SecurityAssessRequest, db: Session = Depends(get_db)):
+    """AI Security Engineering and Evaluation Agent — run a deep assessment.
+
+    Runs the agent-to-agent workflow (orchestrator → research-collector →
+    threat-intel → report-writer) with agentic in-app search, so the report's
+    executive summary and Known Exploits section cite related research from
+    this app's own knowledge graph.
+    """
+    import json as _json
+
+    _ensure_security_columns()
+    result = sec_agent.build_assessment(
+        product_name=data.product_name or "Target product",
+        product_url=data.product_url or "",
+        exposure=data.exposure or "confidential_data",
+        use_case=data.use_case or "",
+        workflow_text=data.workflow_text or "",
+        doc_urls=data.doc_urls or [],
+        focus=data.focus or [],
+        db=db,
+    )
+    rec = SecurityAssessment(
+        product_name=result["product_name"],
+        product_url=result["product_url"],
+        exposure=result["exposure"],
+        use_case=data.use_case or "",
+        overall_pct=result["overall_pct"],
+        posture=result["posture"],
+        markdown=result["markdown"],
+        diagrams_json=_json.dumps(result["diagrams"]),
+        threats_json=_json.dumps(result["threats"]),
+        evidence_json=_json.dumps({
+            "evidence": result.get("evidence", []),
+            "queries_run": result.get("queries_run", []),
+            "known_exploits": result.get("known_exploits", []),
+        }),
+        a2a_trace_json=_json.dumps({
+            "task_id": result.get("a2a_task_id", ""),
+            "trace": result.get("a2a_trace", []),
+        }),
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return {
+        "id": rec.id,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        **result,
+    }
+
+
+def _security_json(rec: SecurityAssessment):
+    import json as _json
+
+    def _load(raw, default):
+        try:
+            return _json.loads(raw) if raw else default
+        except Exception:
+            return default
+
+    diagrams = _load(rec.diagrams_json, {})
+    threats = _load(rec.threats_json, [])
+    evidence_blob = _load(getattr(rec, "evidence_json", None), {})
+    trace_blob = _load(getattr(rec, "a2a_trace_json", None), {})
+    return {
+        "id": rec.id,
+        "product_name": rec.product_name,
+        "product_url": rec.product_url,
+        "exposure": rec.exposure,
+        "use_case": rec.use_case,
+        "overall_pct": rec.overall_pct,
+        "posture": rec.posture,
+        "markdown": rec.markdown,
+        "diagrams": diagrams,
+        "threats": threats,
+        "evidence": evidence_blob.get("evidence", []) if isinstance(evidence_blob, dict) else [],
+        "queries_run": evidence_blob.get("queries_run", []) if isinstance(evidence_blob, dict) else [],
+        "known_exploits": evidence_blob.get("known_exploits", []) if isinstance(evidence_blob, dict) else [],
+        "a2a_task_id": trace_blob.get("task_id", "") if isinstance(trace_blob, dict) else "",
+        "a2a_trace": trace_blob.get("trace", []) if isinstance(trace_blob, dict) else [],
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
+def _ensure_security_columns():
+    """Add evidence/a2a columns to pre-existing SQLite DBs (fresh DBs already have them)."""
+    try:
+        from sqlalchemy import text as _text
+        from .database import engine as _engine
+        with _engine.begin() as conn:
+            cols = [r[1] for r in conn.execute(_text("PRAGMA table_info(security_assessments)")).fetchall()]
+            if "evidence_json" not in cols:
+                conn.execute(_text("ALTER TABLE security_assessments ADD COLUMN evidence_json TEXT"))
+            if "a2a_trace_json" not in cols:
+                conn.execute(_text("ALTER TABLE security_assessments ADD COLUMN a2a_trace_json TEXT"))
+    except Exception:
+        pass  # table may not exist yet on first boot; init_db creates it with columns
+
+
+@app.get("/.well-known/agents")
+def well_known_agents():
+    """A2A agent registry (discovery document)."""
+    from .agents import get_agent_cards, PROTOCOL
+
+    return {"protocol": PROTOCOL, "agents": get_agent_cards()}
+
+
+@app.get("/api/agents/cards")
+def agent_cards():
+    """List A2A agent cards (capabilities + endpoints)."""
+    from .agents import get_agent_cards, PROTOCOL
+
+    return {"protocol": PROTOCOL, "agents": get_agent_cards()}
+
+
+class AgentInvokeRequest(BaseModel):
+    to: str = "research-collector"
+    intent: str = "collect_research"
+    payload: Optional[dict] = None
+    task_id: Optional[str] = None
+
+
+@app.post("/api/agents/invoke")
+def agent_invoke(data: AgentInvokeRequest, db: Session = Depends(get_db)):
+    """Invoke one A2A protocol hop directly (debugging / agent-to-agent calls)."""
+    from .agents import new_envelope, dispatch
+
+    env = new_envelope(
+        "api-caller", data.to, data.intent, data.payload or {},
+        task_id=data.task_id, note="direct invoke",
+    )
+    try:
+        res = dispatch(env, db)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return res
+
+
+@app.get("/api/security/assessments")
+def security_list(db: Session = Depends(get_db)):
+    recs = db.query(SecurityAssessment).order_by(SecurityAssessment.id.desc()).limit(50).all()
+    return {"items": [
+        {k: v for k, v in _security_json(r).items() if k != "markdown"} | {"threat_count": len(_security_json(r)["threats"])}
+        for r in recs
+    ]}
+
+
+@app.get("/api/security/assessments/{assessment_id}")
+def security_get(assessment_id: int, db: Session = Depends(get_db)):
+    rec = db.query(SecurityAssessment).filter(SecurityAssessment.id == assessment_id).first()
+    if not rec:
+        raise HTTPException(404, "Assessment not found")
+    return _security_json(rec)
+
+
+@app.get("/api/security/assessments/{assessment_id}/markdown")
+def security_markdown(assessment_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import PlainTextResponse
+
+    rec = db.query(SecurityAssessment).filter(SecurityAssessment.id == assessment_id).first()
+    if not rec:
+        raise HTTPException(404, "Assessment not found")
+    return PlainTextResponse(rec.markdown, media_type="text/markdown")
+
+
+@app.get("/api/security/assessments/{assessment_id}/pdf")
+def security_pdf(assessment_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+
+    rec = db.query(SecurityAssessment).filter(SecurityAssessment.id == assessment_id).first()
+    if not rec:
+        raise HTTPException(404, "Assessment not found")
+    try:
+        pdf = sec_agent.build_pdf(rec.markdown, title=f"AI Security Assessment — {rec.product_name}")
+    except RuntimeError as exc:
+        raise HTTPException(501, str(exc))
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=security-assessment-{rec.id}.pdf"})
 
 
 def _artifact_json(a: Artifact):

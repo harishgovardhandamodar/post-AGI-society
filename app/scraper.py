@@ -32,12 +32,26 @@ KNOWN_KEYWORDS = [
     "recursive self-improvement", "capabilities", "frontier models",
     "AI alignment", "superalignment", "xrisk", "AI governance",
     "AI regulation", "machine intelligence", "human-level AI",
+    # Whistleblower / testimony / ethics coverage
+    "whistleblower", "testimony", "testimonial", "right to warn",
+    "moral policy", "AI ethics", "ethical AI", "ethics",
+    "retaliation", "non-disparagement", "superalignment team",
+    "existential risk", "uncontrollable", "deceptive alignment",
+    "copyright fair use", "AGI readiness", "frontier lab",
+]
+
+WHISTLEBLOWER_KEYWORDS = [
+    "whistleblower", "testimony", "testimonial", "right to warn",
+    "moral policy", "AI ethics", "retaliation", "non-disparagement",
 ]
 
 NITTER_ACCOUNTS = [
     "samaltman", "elonmusk", "ylecun", "demishassabis",
     "karpathy", "shanelegg", "geoffreyhinton", "nickbostrom",
     "raoul_poe", "ESYudkowsky", "daniela_amodei", "darioduck", "metaculus",
+    # Frontier-lab whistleblowers / ethics voices
+    "janleike", "dqkokotajlo", "MilesBrundage", "timnitGebru",
+    "mmitchell_ai", "helen_toner",
 ]
 
 
@@ -83,6 +97,27 @@ def _parse_iso_date(date_str: str) -> Optional[datetime]:
 def is_relevant(title: str, description: str) -> bool:
     text = f"{title} {description}".lower()
     return any(kw.lower() in text for kw in KNOWN_KEYWORDS)
+
+
+def is_whistleblower_content(title: str, description: str) -> bool:
+    """Detect whistleblower interviews/testimonials on AI, AGI, moral policy, ethics."""
+    text = f"{title} {description}".lower()
+    return any(kw.lower() in text for kw in WHISTLEBLOWER_KEYWORDS)
+
+
+def testimony_tags(title: str, description: str, base_tags: str = "") -> str:
+    """Merge base tags with whistleblower/ethics tags when testimony is detected."""
+    tags = set(t.strip().lower() for t in (base_tags or "").split(",") if t.strip())
+    if is_whistleblower_content(title, description):
+        tags.add("whistleblower")
+        text = f"{title} {description}".lower()
+        if "moral" in text or "policy" in text:
+            tags.add("moral-policy")
+        if "ethic" in text:
+            tags.add("ethics")
+        if "agi" in text:
+            tags.add("agi")
+    return ", ".join(sorted(tags))
 
 
 def extract_sentiment_from_text(text: str) -> float:
@@ -316,9 +351,11 @@ def run_ingestion(db: Session) -> int:
             sentiment_score = extract_sentiment_from_text(f"{item['title']} {item['description']}")
             combined = f"{item['title']} {item.get('description','')}"
             tags = extract_tags(combined)
+            atype = "testimony" if is_whistleblower_content(item["title"], item.get("description", "")) else feed["type"]
+            tags = testimony_tags(item["title"], item.get("description", ""), tags)
             artifact = Artifact(
                 title=item["title"][:500],
-                artifact_type=feed["type"],
+                artifact_type=atype,
                 url=item["url"],
                 description=item["description"],
                 source=feed["source"],

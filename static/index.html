@@ -6,6 +6,7 @@
 <title>Post-AGI Society Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/standalone/umd/vis-network.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 <style>
 :root {
@@ -85,6 +86,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .badge-essay { background: #2d1f3d; color: var(--purple); }
 .badge-tweet { background: #1a3d3d; color: var(--teal); }
 .badge-interview { background: #3d1a1a; color: var(--red); }
+.badge-testimony { background: #3d1a2e; color: #ff8fb2; }
 .badge-research { background: #3d1f3d; color: #da8fff; }
 .badge-projection { background: #3d2e1a; color: var(--orange); }
 .notif { position: fixed; bottom: 20px; right: 20px; padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 1000; display: none; }
@@ -198,6 +200,35 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .plaus-trend-wrap { margin-top: 32px; padding: 20px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; }
 .plaus-trend-wrap h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 12px; font-weight: 600; }
 .plaus-trend-chart { height: 260px; }
+
+/* AI Security agent view */
+#securityView { display: none; padding: 24px; overflow-y: auto; height: 100%; }
+#securityView.visible { display: block; }
+.sec-grid { display: grid; grid-template-columns: 380px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .sec-grid { grid-template-columns: 1fr; } }
+.sec-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+.sec-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 12px; font-weight: 600; }
+.sec-card h4 { font-size: 13px; margin: 14px 0 8px; }
+.sec-card p, .sec-card li { font-size: 12.5px; line-height: 1.6; }
+.sec-score { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.sec-score-num { font-size: 34px; font-weight: 800; }
+.sec-posture { font-size: 13px; font-weight: 600; }
+.sec-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 8px; }
+.sec-table th, .sec-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+.sec-table th { background: var(--bg3); color: var(--text2); font-size: 10.5px; text-transform: uppercase; }
+.sev-Critical { background: rgba(248,81,73,0.18); color: var(--red); font-weight: 700; padding: 1px 8px; border-radius: 8px; font-size: 10.5px; }
+.sev-High { background: rgba(210,153,34,0.18); color: var(--orange); font-weight: 700; padding: 1px 8px; border-radius: 8px; font-size: 10.5px; }
+.sev-Medium { background: rgba(88,166,255,0.15); color: var(--accent); font-weight: 700; padding: 1px 8px; border-radius: 8px; font-size: 10.5px; }
+.sev-Low { background: rgba(139,148,158,0.15); color: var(--text2); font-weight: 700; padding: 1px 8px; border-radius: 8px; font-size: 10.5px; }
+.sec-diagram { background: #fff; border-radius: 8px; padding: 12px; margin-top: 8px; overflow-x: auto; }
+.sec-diagram pre { display: none; }
+.sec-md { font-size: 12.5px; line-height: 1.65; }
+.sec-md h1, .sec-md h2, .sec-md h3 { margin: 14px 0 8px; }
+.sec-md table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin: 8px 0; display: block; overflow-x: auto; }
+.sec-md th, .sec-md td { border: 1px solid var(--border); padding: 5px 8px; }
+.sec-md code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+.sec-md blockquote { border-left: 3px solid var(--accent); padding: 6px 12px; background: var(--bg3); border-radius: 0 6px 6px 0; margin: 8px 0; }
+.sec-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -229,6 +260,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="main-tabs">
       <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph</div>
       <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility</div>
+      <div class="main-tab" data-view="security" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
     <div class="main-content">
       <div id="graphContainer" style="height:100%;position:relative;">
@@ -247,6 +279,41 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div id="graph" style="height:100%;"></div>
       </div>
       <div id="plausibilityView"></div>
+      <div id="securityView">
+        <div class="sec-grid">
+          <div>
+            <div class="sec-card">
+              <h3><i class="fas fa-shield-halved"></i> AI Security Engineering &amp; Evaluation Agent</h3>
+              <div class="form-group"><label>Product name</label><input id="secProduct" placeholder="e.g. Collibra AI Writing Assistant" value="Collibra AI Writing Assistant" /></div>
+              <div class="form-group"><label>Product link</label><input id="secUrl" placeholder="https://..." value="https://www.collibra.com/blog/the-new-standard-for-metadata-documentation-meet-your-new-ai-writing-assistant" /></div>
+              <div class="form-group"><label>Exposure setting</label>
+                <select id="secExposure">
+                  <option value="restricted_data">Restricted data (highest sensitivity)</option>
+                  <option value="confidential_data" selected>Confidential data</option>
+                  <option value="internal">Internal</option>
+                  <option value="public">Public / synthetic only</option>
+                </select>
+              </div>
+              <div class="form-group"><label>Use case / data in scope</label><textarea id="secUseCase" placeholder="e.g. Used with restricted + confidential data to auto-draft table/column descriptions">Used with restricted data and confidential data to auto-draft metadata documentation (descriptions, classifications) for catalog assets.</textarea></div>
+              <div class="form-group"><label>Workflow notes (optional)</label><textarea id="secWorkflow" placeholder="Paste workflow context...">Asset created → AI suggests description → steward reviews → approve → publish. Admin enables feature, pins model/region, maps roles.</textarea></div>
+              <div class="form-group"><label>Documentation URLs (one per line)</label><textarea id="secDocs" placeholder="https://...">https://productresources.collibra.com/docs/collibra/latest/Content/Assets/LifecycleMgmt/co_about-ai-writing-assistant.htm
+https://productresources.collibra.com/docs/collibra/latest/Content/Assets/LifecycleMgmt/ta_config-ai-writing-assistant.htm</textarea></div>
+              <div class="form-group"><label>Focus areas</label>
+                <div style="font-size:12px;display:flex;flex-direction:column;gap:4px;">
+                  <label><input type="checkbox" id="secFocusCopy" checked /> Accidental copy of sensitive info by employees</label>
+                  <label><input type="checkbox" id="secFocusMisclass" checked /> Misclassified / mislabelled files</label>
+                </div>
+              </div>
+              <button class="btn btn-primary" onclick="runSecurityAssessment()" style="width:100%;" id="secRunBtn"><i class="fas fa-play"></i> Run deep security assessment</button>
+              <div class="sec-btn-row">
+                <button class="btn btn-sm" onclick="loadSecurityHistory()" title="Past assessments"><i class="fas fa-history"></i> History</button>
+              </div>
+              <div id="secHistory" style="margin-top:10px;font-size:12px;"></div>
+            </div>
+          </div>
+          <div id="secResult"><div class="sec-card"><p style="color:var(--text2)">Configure the product and exposure on the left, then run the agent. The report includes an executive summary, illustrated data-flow / threat-path / workflow diagrams, a full threat &amp; risk register, and Markdown + PDF export.</p></div></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -266,7 +333,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div class="form-group"><label>Type</label>
           <select id="fType">
             <option value="news">News</option><option value="paper">Paper</option><option value="book">Book</option>
-            <option value="essay">Essay</option><option value="tweet">Tweet</option><option value="interview">Interview</option>
+            <option value="essay">Essay</option><option value="tweet">Tweet</option><option value="interview">Interview</option><option value="testimony">Testimony</option>
             <option value="research">Research</option><option value="projection">Projection</option>
           </select>
         </div>
@@ -339,12 +406,12 @@ const SIMILARITY_THRESHOLD = 0.25;
 
 const TYPE_COLORS = {
   news: '#58a6ff', paper: '#3fb950', book: '#f0b429', essay: '#bc8cff',
-  tweet: '#5ce0e6', interview: '#f85a5a', research: '#da8fff', projection: '#f0b429'
+  tweet: '#5ce0e6', interview: '#f85a5a', testimony: '#ff6b9d', research: '#da8fff', projection: '#f0b429'
 };
 
 const TYPE_GLOWS = {
   news: 'rgba(88,166,255,0.5)', paper: 'rgba(63,185,80,0.5)', book: 'rgba(240,180,41,0.5)',
-  essay: 'rgba(188,140,255,0.5)', tweet: 'rgba(92,224,230,0.5)', interview: 'rgba(248,90,90,0.5)',
+  essay: 'rgba(188,140,255,0.5)', tweet: 'rgba(92,224,230,0.5)', interview: 'rgba(248,90,90,0.5)', testimony: 'rgba(255,107,157,0.5)',
   research: 'rgba(218,143,255,0.5)', projection: 'rgba(240,180,41,0.5)'
 };
 
@@ -1054,8 +1121,11 @@ function switchMainView(view) {
   document.getElementById('graphContainer').style.display = view === 'graph' ? 'block' : 'none';
   document.getElementById('plausibilityView').style.display = view === 'plausibility' ? 'block' : 'none';
   document.getElementById('plausibilityView').classList.toggle('visible', view === 'plausibility');
+  document.getElementById('securityView').style.display = view === 'security' ? 'block' : 'none';
+  document.getElementById('securityView').classList.toggle('visible', view === 'security');
   if (view === 'graph' && network) setTimeout(() => network.fit({ animation: true }), 100);
   if (view === 'plausibility' && !plausibilityLoaded) { plausibilityLoaded = true; loadPlausibility(); }
+  if (view === 'security' && window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: 'neutral' }); } catch (e) {} }
 }
 
 async function loadPlausibility() {
@@ -1349,6 +1419,178 @@ function showNotif(msg, type) {
   const el = document.getElementById('notif');
   el.textContent = msg; el.className = 'notif ' + type;
   setTimeout(() => { el.className = 'notif'; }, 3000);
+}
+
+/* ---- AI Security Engineering and Evaluation Agent ---- */
+let currentSecurityId = null;
+let currentSecurityData = null;
+
+function secEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function openArtifactById(id) {
+  if (typeof openDetailOverlay === 'function') openDetailOverlay(id);
+}
+
+function secSeverityColor(pct) {
+  if (pct >= 75) return 'var(--red)';
+  if (pct >= 50) return 'var(--orange)';
+  if (pct >= 30) return 'var(--accent)';
+  return 'var(--green)';
+}
+
+async function runSecurityAssessment() {
+  const btn = document.getElementById('secRunBtn');
+  const el = document.getElementById('secResult');
+  btn.style.pointerEvents = 'none'; btn.style.opacity = '0.7';
+  el.innerHTML = '<div class="sec-card" style="text-align:center;padding:40px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Security orchestrator running A2A workflow — research-collector searching this app, threat-intel mapping known attacks...</div>';
+  const docs = document.getElementById('secDocs').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const focus = [];
+  if (document.getElementById('secFocusCopy').checked) focus.push('accidental_copy');
+  if (document.getElementById('secFocusMisclass').checked) focus.push('misclassification');
+  const payload = {
+    product_name: document.getElementById('secProduct').value,
+    product_url: document.getElementById('secUrl').value,
+    exposure: document.getElementById('secExposure').value,
+    use_case: document.getElementById('secUseCase').value,
+    workflow_text: document.getElementById('secWorkflow').value,
+    doc_urls: docs,
+    focus,
+  };
+  try {
+    const res = await fetch(`${API}/security/assess`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    currentSecurityId = data.id;
+    currentSecurityData = data;
+    renderSecurityReport(data);
+    showNotif('Security assessment complete', 'success');
+  } catch (e) {
+    el.innerHTML = '<div class="sec-card"><p style="color:var(--red)">Assessment failed. Is the backend running?</p></div>';
+    showNotif('Security assessment failed', 'error');
+  }
+  btn.style.pointerEvents = ''; btn.style.opacity = '1';
+}
+
+function renderSecurityReport(data) {
+  const el = document.getElementById('secResult');
+  const color = secSeverityColor(data.overall_pct);
+  const threats = data.threats || [];
+  const dg = data.diagrams || {};
+  let rows = threats.map(t => `<tr><td><strong>${secEsc(t.id)}</strong></td><td>${secEsc(t.title)}<br/><span style="color:var(--text2);font-size:10.5px;">${secEsc(t.owasp)}</span></td><td>L${t.likelihood}×I${t.impact}=${t.score}</td><td><span class="sev-${t.severity}">${t.severity}</span></td></tr>`).join('');
+  let details = threats.map(t => `<div class="sec-card"><h4>${secEsc(t.id)} — ${secEsc(t.title)} <span class="sev-${t.severity}">${t.severity}</span></h4><p style="color:var(--text2)"><em>${secEsc(t.stride)} · ${secEsc(t.owasp)} · L${t.likelihood} × I${t.impact} = ${t.score}</em></p><p>${secEsc(t.description)}</p><ul style="margin-left:18px;">${(t.mitigations || []).map(m => `<li>${secEsc(m)}</li>`).join('')}</ul></div>`).join('');
+  const exploits = data.known_exploits || [];
+  let exploitsHtml;
+  if (!exploits.length) {
+    exploitsHtml = '<p style="color:var(--text2)">No known-attack catalogue entries matched — see §6 of the full report.</p>';
+  } else {
+    exploitsHtml = '<div style="overflow-x:auto;"><table class="sec-table"><tr><th>ID</th><th>Known attack</th><th>Maps to</th><th>In-app research</th></tr>' +
+      exploits.map(k => {
+        const refs = (k.local_refs || []).map(r => `<a href="#" onclick="openArtifactById(${r.artifact_id});return false;" style="color:var(--accent);">#${r.artifact_id} ${secEsc(r.title)}</a>`).join('<br/>') || '<span style="color:var(--text2)">none — ingest advised</span>';
+        return `<tr><td><strong>${secEsc(k.id)}</strong></td><td>${secEsc(k.title)}<br/><span style="color:var(--text2);font-size:10.5px;">${secEsc(k.attack_class)}</span><br/><span style="font-size:11px;">${secEsc(k.relevance)}</span></td><td>${(k.threat_ids || []).join(', ')}</td><td>${refs}</td></tr>`;
+      }).join('') + '</table></div>';
+    const ev = data.evidence || [];
+    if (ev.length) {
+      exploitsHtml += '<h4 style="margin-top:12px;">Top in-app evidence (agentic search)</h4><ul style="margin-left:18px;font-size:12px;">' +
+        ev.slice(0, 6).map(e => `<li><a href="#" onclick="openArtifactById(${e.artifact_id});return false;" style="color:var(--accent);">${secEsc(e.title)}</a> <span style="color:var(--text2)">· relevance ${e.relevance} · ${secEsc(e.reason || '')}</span></li>`).join('') + '</ul>';
+    }
+  }
+  const trace = data.a2a_trace || [];
+  let traceHtml = trace.length
+    ? '<ol style="margin-left:18px;">' + trace.map(h => `<li><strong>${secEsc(h.agent)}</strong> · ${secEsc(h.intent)} <span style="color:var(--text2)">· ${secEsc(h.at || '')}${h.note ? ' — ' + secEsc(h.note) : ''}</span></li>`).join('') + '</ol>'
+    : '<span>No A2A trace recorded for this run.</span>';
+  const queries = data.queries_run || [];
+  let queriesHtml = queries.length
+    ? '<h4 style="margin-top:10px;">Agentic search queries (research-collector)</h4><ul style="margin-left:18px;">' + queries.map(q => `<li><code>${secEsc(q)}</code></li>`).join('') + '</ul>'
+    : '';
+  el.innerHTML = `
+    <div class="sec-card">
+      <h3><i class="fas fa-file-shield"></i> Executive summary — ${secEsc(data.product_name)}</h3>
+      <div class="sec-score"><div class="sec-score-num" style="color:${color}">${secEsc(data.overall_pct)}<span style="font-size:14px;">/100</span></div>
+      <div><div class="sec-posture" style="color:${color}">${secEsc(data.posture)}</div>
+      <div style="font-size:11.5px;color:var(--text2)">Exposure: <strong>${secEsc(data.exposure_label || data.exposure)}</strong> · ${threats.length} threats modelled · Assessment #${data.id}</div></div></div>
+      <div class="sec-btn-row">
+        <button class="btn btn-sm btn-primary" onclick="downloadSecurityMarkdown()"><i class="fas fa-file-lines"></i> Markdown</button>
+        <button class="btn btn-sm" onclick="downloadSecurityPDF()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-file-pdf"></i> PDF</button>
+        <button class="btn btn-sm" onclick="window.print()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-print"></i> Print</button>
+      </div>
+    </div>
+    <div class="sec-card"><h3><i class="fas fa-diagram-project"></i> Data-flow &amp; trust boundary</h3><div class="sec-diagram"><div class="mermaid">${secEsc(dg.dataflow || '')}</div></div>
+      <h4 style="margin-top:14px;">Threat paths</h4><div class="sec-diagram"><div class="mermaid">${secEsc(dg.threat_paths || '')}</div></div>
+      <h4 style="margin-top:14px;">Secure workflow</h4><div class="sec-diagram"><div class="mermaid">${secEsc(dg.workflow || '')}</div></div>
+    </div>
+    <div class="sec-card"><h3><i class="fas fa-triangle-exclamation"></i> Threat &amp; risk register</h3>
+      <div style="overflow-x:auto;"><table class="sec-table"><tr><th>ID</th><th>Threat</th><th>Score</th><th>Severity</th></tr>${rows}</table></div>
+      <p style="margin-top:8px;color:var(--text2);font-size:11.5px;">Accidental employee copy (T01) and misclassified / mislabelled files (T03) are modelled as first-class threats with dedicated mitigations — see full report.</p>
+    </div>
+    <div class="sec-card"><h3><i class="fas fa-bug"></i> Known exploits &amp; research evidence <span style="font-weight:400;text-transform:none;letter-spacing:0;">(via agent-to-agent workflow)</span></h3>
+      <div id="secExploits">${exploitsHtml}</div>
+    </div>
+    <div class="sec-card"><h3><i class="fas fa-route"></i> Agent-to-agent trail <span style="font-weight:400;text-transform:none;letter-spacing:0;">${data.a2a_task_id ? '· task ' + secEsc(data.a2a_task_id) : ''}</span></h3>
+      <div style="font-size:11.5px;color:var(--text2);">${traceHtml}</div>
+      ${queriesHtml}
+    </div>
+    ${details}
+    <div class="sec-card"><h3><i class="fas fa-file-lines"></i> Full report (Markdown)</h3><div class="sec-md" id="secMarkdown"></div></div>`;
+  document.getElementById('secMarkdown').textContent = '';
+  document.getElementById('secMarkdown').innerHTML = renderMarkdownLite(data.markdown || '');
+  if (window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: 'neutral' }); mermaid.run(); } catch (e) { mermaid.init(undefined, el.querySelectorAll('.mermaid')); } }
+}
+
+function renderMarkdownLite(md) {
+  let h = secEsc(md);
+  h = h.replace(/^### (.*)$/gm, '<h4>$1</h4>').replace(/^## (.*)$/gm, '<h3>$1</h3>').replace(/^# (.*)$/gm, '<h2>$1</h2>');
+  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
+  h = h.replace(/```mermaid[\s\S]*?```/g, '<p><em>(diagram — see illustrated panels above)</em></p>');
+  h = h.replace(/^- (.*)$/gm, '<li>$1</li>');
+  h = h.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  h = h.replace(/\n\n/g, '<br/><br/>');
+  return h;
+}
+
+function downloadSecurityMarkdown() {
+  if (!currentSecurityId) return;
+  window.open(`${API}/security/assessments/${currentSecurityId}/markdown`, '_blank');
+}
+
+async function downloadSecurityPDF() {
+  if (!currentSecurityId) return;
+  const res = await fetch(`${API}/security/assessments/${currentSecurityId}/pdf`);
+  if (res.status === 501) {
+    showNotif('Server PDF needs reportlab — use Print → Save as PDF instead', 'error');
+    window.print();
+    return;
+  }
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `security-assessment-${currentSecurityId}.pdf`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function loadSecurityHistory() {
+  const el = document.getElementById('secHistory');
+  el.innerHTML = '<span style="color:var(--text2)">Loading...</span>';
+  try {
+    const data = await (await fetch(`${API}/security/assessments`)).json();
+    if (!data.items || !data.items.length) { el.innerHTML = '<span style="color:var(--text2)">No past assessments yet.</span>'; return; }
+    el.innerHTML = data.items.map(i => `<div style="padding:6px 0;border-bottom:1px solid var(--border);"><a href="#" onclick="loadSecurityById(${i.id});return false;" style="color:var(--accent);">#${i.id} ${secEsc(i.product_name)}</a> <span style="color:var(--text2)">· ${secEsc(i.exposure)} · ${i.overall_pct}/100 · ${i.threat_count} threats</span></div>`).join('');
+  } catch (e) { el.innerHTML = '<span style="color:var(--red)">Failed to load history</span>'; }
+}
+
+async function loadSecurityById(id) {
+  try {
+    const data = await (await fetch(`${API}/security/assessments/${id}`)).json();
+    currentSecurityId = data.id;
+    currentSecurityData = data;
+    renderSecurityReport(data);
+  } catch (e) { showNotif('Failed to load assessment', 'error'); }
 }
 
 window.addEventListener('resize', () => {

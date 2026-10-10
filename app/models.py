@@ -13,6 +13,7 @@ class ArtifactType(str, enum.Enum):
     BOOK = "book"
     ESSAY = "essay"
     INTERVIEW = "interview"
+    TESTIMONY = "testimony"
     PROJECTION = "projection"
     RESEARCH = "research"
 
@@ -93,6 +94,24 @@ class Projection(Base):
     summary = Column(Text, nullable=True)
 
     artifact = relationship("Artifact", back_populates="projections")
+
+
+class SecurityAssessment(Base):
+    __tablename__ = "security_assessments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_name = Column(String(500), nullable=False)
+    product_url = Column(String(1000), nullable=True)
+    exposure = Column(String(100), nullable=False, default="confidential_data")
+    use_case = Column(Text, nullable=True)
+    overall_pct = Column(Float, nullable=False, default=0)
+    posture = Column(String(500), nullable=True)
+    markdown = Column(Text, nullable=False)
+    diagrams_json = Column(Text, nullable=True)  # JSON-encoded mermaid sources
+    threats_json = Column(Text, nullable=True)  # JSON-encoded threat list
+    evidence_json = Column(Text, nullable=True)  # JSON: {evidence, queries_run, known_exploits}
+    a2a_trace_json = Column(Text, nullable=True)  # JSON: agent-to-agent hop trace
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Relationship(Base):
