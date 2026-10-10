@@ -31,6 +31,7 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 | **Curation** | Manual Add (all 9 types incl. diarized testimony) · typed Relate edges · re-seed from 71 curated artifacts + 96 relationships |
 | **API** | 30+ REST endpoints: artifacts, graph, clusters, stats, plausibility (+trend), timeline, discoveries, search, ingest, security suite, A2A agent invoke |
 | **Ops** | Docker Compose + persistent volume · WAL-mode SQLite · dark/light themes · responsive layout · keyboard-accessible controls |
+| **Agents tab** | In-app Agent Console: registry grid, invoke console with envelope + trace viewer (header button opens it) |
 
 ---
 
@@ -437,6 +438,8 @@ PhD-level research workbench (charts, experiments, gap analysis, collaboration).
 | POST | `/api/security/assessments/{id}/ratings` | Independent L/I ratings + Cohen's κ |
 | POST | `/api/security/assessments/{id}/clone` | New version (parent-linked draft) |
 | GET | `/api/security/coverage` | Framework reference data |
+| GET | `/api/agents/cards` | Agent registry (8 agents, protocol a2a/1.0) |
+| POST | `/api/agents/invoke` | Invoke any agent directly (envelope + trace) |
 
 ---
 
