@@ -353,6 +353,15 @@ html.light .agent-out { background: #f0f2f5; }
   .disc-rise, .pulse-dot, .new-badge { animation: none; }
   .urg-fill, .inf-fill { transition: none; }
 }
+.st-captured, .st-durable { background: rgba(63,185,80,.15); color: var(--green); }
+.st-emerging, .st-contested { background: rgba(210,153,34,.15); color: var(--orange); }
+.st-exposed, .st-eroding { background: rgba(248,81,73,.15); color: var(--red); }
+.st-monitored { background: rgba(139,148,158,.15); color: var(--text2); }
+.st-captured, .st-emerging, .st-exposed, .st-monitored, .st-durable, .st-contested, .st-eroding { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 9px; border-radius: 9px; margin-left: 8px; text-transform: uppercase; letter-spacing: .4px; }
+.tl-subbar { display: inline-flex; gap: 0; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+.tl-subbar button { border: none; background: transparent; color: var(--text2); font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.tl-subbar button.active { background: var(--accent); color: var(--bg); }
+.tl-subbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tl-fresh { font-size: 11px; color: var(--text2); text-align: center; padding: 8px; }
 .sec-hist-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
 .sec-exp-blurb { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
@@ -1328,6 +1337,95 @@ function switchMainView(view) {
 
 let timelineLoaded = false;
 let _tlChart = null;
+let tlSub = 'road';
+let _tlRoadData = null;
+function setTlSub(s) {
+  tlSub = s;
+  if (s === 'jobs' && !document.getElementById('profBody').dataset.done) loadProfessions();
+  if (s === 'edge' && !document.getElementById('edgeBody').dataset.done) loadHumanEdge();
+  document.querySelectorAll('#timelineView .tl-subbar button').forEach(b => b.classList.toggle('active', b.dataset.sub === s));
+  ['road', 'jobs', 'edge'].forEach(k => {
+    const pane = document.getElementById('tlPane' + k[0].toUpperCase() + k.slice(1));
+    if (pane) pane.style.display = k === s ? '' : 'none';
+  });
+}
+
+async function loadProfessions(force) {
+  const body = document.getElementById('profBody');
+  if (!force && body && body.dataset.done) return;
+  try {
+    const d = await (await fetch(`${API}/timeline/professions`)).json();
+    renderProfessions(d);
+    if (body) body.dataset.done = '1';
+  } catch (e) {
+    if (body) body.innerHTML = '<span style="color:var(--red)">Failed to load.</span>';
+  }
+}
+
+function tlBar(pct, cls) {
+  return `<div class="urg-bar"><div class="urg-fill ${cls || ''}" data-w="${Math.min(100, Math.round(pct))}"></div></div>`;
+}
+
+function tlAnimateBars() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('#timelineView .urg-fill[data-w]').forEach(b => {
+      if (!b.style.width) b.style.width = b.getAttribute('data-w') + '%';
+    });
+  }));
+}
+
+function renderProfessions(d) {
+  const cards = (d.captured || []).map((c, i) =>
+    `<div class="attn disc-rise" style="animation-delay:${Math.min(i, 10) * 60}ms;border-left-color:var(--accent);">
+      <div style="font-size:18px;width:30px;text-align:center;flex-shrink:0;"><i class="fas ${c.icon || 'fa-briefcase'}"></i></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:600;">${secEsc(c.name)}<span class="st-${c.status}">${c.status}</span></div>
+        <div style="font-size:11.5px;color:var(--text2);">${secEsc(c.blurb)}</div>
+        ${tlBar(c.confidence)}
+        <div style="font-size:11px;color:var(--text2);">confidence <strong>${c.confidence}</strong> · evidence ${c.evidence_count} (${c.recent_count} recent) · ${c.source_types.join(', ') || 'no sources yet'} · ${c.linked_projections} linked forecasts</div>
+        ${(c.key_items || []).map(a => `<div style="font-size:11.5px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a></div>`).join('')}
+      </div>
+    </div>`).join('');
+  document.getElementById('profBody').innerHTML =
+    `<div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;">${d.captured_count} captured · scores revisited from ${d.freshness.total_artifacts} artifacts.</div>` + cards;
+  document.getElementById('profFuture').innerHTML = (d.future || []).map(f =>
+    `<div class="attn disc-rise" style="border-left-color:var(--orange);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;"><span class="tl-type">${secEsc(f.type)}</span><strong>${secEsc(f.timeframe || 'undated')}</strong> <span style="color:var(--text2)">· conf ${f.confidence}</span>${(f.professions || []).map(p => ` <span class="tag">${secEsc(p)}</span>`).join('')}</div>
+        <div style="font-size:11.5px;margin-top:2px;">${secEsc(f.summary || '')}</div>
+        ${f.artifact ? `<div style="font-size:11.5px;">• <a class="tl-link" onclick="openArtifactById(${f.artifact.id});return false;">${secEsc(f.artifact.title.slice(0, 90))}</a></div>` : ''}
+      </div>
+    </div>`).join('') || '<span style="color:var(--text2)">No workforce projections on record yet.</span>';
+  tlAnimateBars();
+}
+
+async function loadHumanEdge(force) {
+  const body = document.getElementById('edgeBody');
+  if (!body) return;
+  if (!force && body.dataset.done) return;
+  try {
+    const d = await (await fetch(`${API}/timeline/human-edge`)).json();
+    document.getElementById('edgeBody').innerHTML =
+      `<div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;">${d.durable_count} durable · ${d.contested_count} contested · the rest eroding or thin-evidence.</div>` +
+      (d.areas || []).map((a, i) =>
+      `<div class="attn disc-rise" style="animation-delay:${Math.min(i, 10) * 60}ms;border-left-color:var(--green);">
+        <div style="font-size:18px;width:30px;text-align:center;flex-shrink:0;"><i class="fas ${a.icon || 'fa-heart'}"></i></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12.5px;font-weight:600;">${secEsc(a.name)}<span class="st-${a.status}">${a.status}</span></div>
+          <div style="font-size:11.5px;font-style:italic;color:var(--text2);">“${secEsc(a.irreducible)}”</div>
+          ${tlBar(a.resilience)}
+          <div style="font-size:11px;color:var(--text2);">resilience <strong>${a.resilience}</strong> · human evidence ${a.human_evidence} · encroachment ${a.encroachment} · cautionary support ${a.cautionary_support}</div>
+          ${(a.key_items || []).map(x => `<div style="font-size:11.5px;">• <a class="tl-link" onclick="openArtifactById(${x.id});return false;">${secEsc(x.title.slice(0, 90))}</a></div>`).join('')}
+          ${(a.watch_signals || []).length ? `<div style="font-size:11px;color:var(--orange);margin-top:3px;">Watch — encroaching signals:</div>` + a.watch_signals.map(x => `<div style="font-size:11.5px;">• <a class="tl-link" onclick="openArtifactById(${x.id});return false;">${secEsc(x.title.slice(0, 90))}</a></div>`).join('') : ''}
+          ${(a.supporting || []).map(s => `<div style="font-size:11px;color:var(--text2);margin-top:3px;">${secEsc(s.type)} ${s.confidence} · ${secEsc(s.timeframe || '')} — ${secEsc(s.summary || '')}</div>`).join('')}
+        </div>
+      </div>`).join('');
+    body.dataset.done = '1';
+    tlAnimateBars();
+  } catch (e) {
+    body.innerHTML = '<span style="color:var(--red)">Failed to load.</span>';
+  }
+}
 
 async function loadTimeline() {
   const el = document.getElementById('timelineView');
@@ -1370,7 +1468,14 @@ function renderTimeline(d) {
   const warns = (d.latest_warnings || []).map(a =>
     `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a></div>`).join('');
   const f = d.freshness || {};
+  _tlRoadData = d;
   el.innerHTML = `<div class="tl-wrap">
+    <div class="tl-subbar" role="group" aria-label="Timeline views">
+      <button data-sub="road" class="active" onclick="setTlSub('road')"><i class="fas fa-route"></i> Road to AGI</button>
+      <button data-sub="jobs" onclick="setTlSub('jobs')"><i class="fas fa-briefcase"></i> Professions</button>
+      <button data-sub="edge" onclick="setTlSub('edge')"><i class="fas fa-heart"></i> Human Edge</button>
+    </div>
+    <div id="tlPaneRoad">
     <div class="tl-card"><h3><i class="fas fa-hourglass-half"></i> Where we are toward AGI <button class="btn btn-sm" style="float:right;" onclick="timelineLoaded=true;loadTimeline();"><i class="fas fa-rotate"></i> Refresh</button></h3>
       <div class="tl-hero">
         <div class="tl-stat"><div class="v">${w.median_agi_year != null ? Math.round(w.median_agi_year) : '—'}</div><div class="l">median forecast AGI year (${w.forecast_count || 0} dated forecasts)</div></div>
@@ -1389,6 +1494,20 @@ function renderTimeline(d) {
     <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:18px 0 12px;">What it takes to bridge there — 5 open gaps</h3>
     ${gapsHtml}
     <div class="tl-fresh">Live from the knowledge graph · ${f.total_artifacts || 0} artifacts · ${f.total_projections || 0} projections · last ingest ${f.last_ingest || 'not run yet'} · refreshes with every ingestion run.</div>
+    </div>
+    <div id="tlPaneJobs" style="display:none;">
+      <div class="tl-card"><h3><i class="fas fa-briefcase"></i> Professions — captured so far <button class="btn btn-sm" style="float:right;" onclick="loadProfessions(true)"><i class="fas fa-rotate"></i> Revisit scores</button></h3>
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;">Statuses + confidence recomputed live from the graph on every load — each Fetch revisits them.</div>
+        <div id="profBody">Loading…</div>
+      </div>
+      <div class="tl-card"><h3><i class="fas fa-crystal-ball"></i> Future consumption — workforce projections</h3><div id="profFuture">Loading…</div></div>
+    </div>
+    <div id="tlPaneEdge" style="display:none;">
+      <div class="tl-card"><h3><i class="fas fa-heart"></i> Human edge — still needs human intelligence <button class="btn btn-sm" style="float:right;" onclick="loadHumanEdge(true)"><i class="fas fa-rotate"></i> Revisit scores</button></h3>
+        <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;">Resilience recomputed live: human discourse minus automation encroachment, plus cautionary support.</div>
+        <div id="edgeBody">Loading…</div>
+      </div>
+    </div>
   </div>`;
   if (window.Chart && document.getElementById('tlChart')) {
     try { if (_tlChart) _tlChart.destroy(); } catch (e) {}
