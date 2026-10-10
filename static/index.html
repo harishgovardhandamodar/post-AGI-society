@@ -280,6 +280,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tl-gap { border-left: 3px solid var(--orange); }
 .tl-open { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 8px; border-radius: 8px; background: rgba(210,153,34,.15); color: var(--orange); }
 .tl-link { color: var(--accent); cursor: pointer; }
+.disc-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; }
+.disc-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.disc-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 8px rgba(0,0,0,.18); }
+.disc-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); margin-bottom: 12px; font-weight: 600; }
+@keyframes disc-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.disc-rise { animation: disc-rise .5s cubic-bezier(.2,.7,.3,1) both; }
+.attn { display: flex; gap: 12px; padding: 12px; border-radius: 10px; background: var(--bg3); margin-bottom: 8px; border-left: 3px solid var(--red); }
+.attn.warn { border-left-color: var(--orange); }
+.pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); margin-top: 4px; flex-shrink: 0; animation: disc-pulse 1.8s ease-out infinite; }
+.attn.warn .pulse-dot { background: var(--orange); }
+@keyframes disc-pulse { 0% { box-shadow: 0 0 0 0 rgba(248,81,73,.5); } 70% { box-shadow: 0 0 0 9px rgba(248,81,73,0); } 100% { box-shadow: 0 0 0 0 rgba(248,81,73,0); } }
+.urg-bar { height: 6px; border-radius: 3px; background: var(--bg); margin-top: 6px; overflow: hidden; }
+.urg-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--orange), var(--red)); width: 0; transition: width .9s cubic-bezier(.2,.7,.3,1); }
+.new-badge { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .5px; color: #fff; background: linear-gradient(90deg, var(--accent), var(--purple), var(--accent)); background-size: 200% 100%; padding: 1px 7px; border-radius: 8px; margin-right: 6px; animation: disc-shimmer 2.5s linear infinite; }
+@keyframes disc-shimmer { to { background-position: 200% 0; } }
+.inf-bar { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; margin-top: 5px; }
+.inf-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--purple)); width: 0; transition: width .9s cubic-bezier(.2,.7,.3,1); }
+@media (prefers-reduced-motion: reduce) {
+  .disc-rise, .pulse-dot, .new-badge { animation: none; }
+  .urg-fill, .inf-fill { transition: none; }
+}
 .tl-fresh { font-size: 11px; color: var(--text2); text-align: center; padding: 8px; }
 .sec-hist-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
 .sec-exp-blurb { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
@@ -327,13 +348,15 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
 
   <div class="main">
     <div class="main-tabs">
-      <div class="main-tab active" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph <span class="cnt" id="cntGraph">0</span></div>
+      <div class="main-tab active" data-view="discoveries" onclick="switchMainView('discoveries')"><i class="fas fa-sparkles"></i> Discoveries</div>
+      <div class="main-tab" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph <span class="cnt" id="cntGraph">0</span></div>
       <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility <span class="cnt" id="cntPlaus">0</span></div>
       <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline <span class="cnt" id="cntTl">0</span></div>
       <div class="main-tab" data-view="security" id="securityTab" style="display:none;" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
     <div class="main-content">
-      <div id="graphContainer" style="height:100%;position:relative;">
+      <div id="discoveriesView" style="height:100%;"></div>
+      <div id="graphContainer" style="height:100%;position:relative;display:none;">
         <div class="cluster-bar" title="Cluster graph nodes; centroid = group label">
           <button class="cluster-btn active" data-cluster="off" onclick="setClusterMode('off')" title="No clustering"><i class="fas fa-circle"></i> Off</button>
           <button class="cluster-btn" data-cluster="category" onclick="setClusterMode('category')" title="Cluster by artifact category (type)"><i class="fas fa-layer-group"></i> Category</button>
@@ -498,6 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initTabs();
   loadData();
+  switchMainView('discoveries');
   document.getElementById('searchInput').addEventListener('input', debounce(filterArtifacts, 300));
 });
 
@@ -1221,12 +1245,14 @@ const PROJ_DEFS = {
 
 function switchMainView(view) {
   document.querySelectorAll('.main-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.getElementById('discoveriesView').style.display = view === 'discoveries' ? 'block' : 'none';
   document.getElementById('graphContainer').style.display = view === 'graph' ? 'block' : 'none';
   document.getElementById('plausibilityView').style.display = view === 'plausibility' ? 'block' : 'none';
   document.getElementById('plausibilityView').classList.toggle('visible', view === 'plausibility');
   document.getElementById('securityView').style.display = view === 'security' ? 'block' : 'none';
   document.getElementById('securityView').classList.toggle('visible', view === 'security');
   document.getElementById('timelineView').style.display = view === 'timeline' ? 'block' : 'none';
+  if (view === 'discoveries' && !discoveriesLoaded) { discoveriesLoaded = true; loadDiscoveries(); }
   if (view === 'timeline' && !timelineLoaded) { timelineLoaded = true; loadTimeline(); }
   if (view === 'graph' && network) setTimeout(() => network.fit({ animation: true }), 100);
   if (view === 'plausibility' && !plausibilityLoaded) { plausibilityLoaded = true; loadPlausibility(); }
@@ -1303,6 +1329,86 @@ function renderTimeline(d) {
       data: { labels: (w.by_year || []).map(b => b.bucket), datasets: [{ label: 'forecasts', data: (w.by_year || []).map(b => b.count), backgroundColor: '#58a6ff' }] },
       options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
   }
+}
+
+let discoveriesLoaded = false;
+
+function discCountUp(el, target, suffix) {
+  suffix = suffix || '';
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce || !window.requestAnimationFrame) { el.textContent = target + suffix; return; }
+  const t0 = performance.now(), dur = 900;
+  (function tick(now) {
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * e) + suffix;
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+async function loadDiscoveries() {
+  const el = document.getElementById('discoveriesView');
+  el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Scanning for what needs attention…</div>';
+  try {
+    const data = await (await fetch(`${API}/discoveries`)).json();
+    renderDiscoveries(data);
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load discoveries</div>';
+  }
+}
+
+function renderDiscoveries(d) {
+  const el = document.getElementById('discoveriesView');
+  const attn = (d.attention || []).map((a, i) => {
+    const art = a.artifact || {};
+    const pct = Math.min(100, Math.round(a.urgency / 12 * 100));
+    return `<div class="attn${a.kind === 'whistleblower' ? ' warn' : ''} disc-rise" style="animation-delay:${i * 90}ms">
+      <span class="pulse-dot" title="needs attention"></span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:600;"><a class="tl-link" onclick="openArtifactById(${art.id});return false;">${secEsc(art.title || 'Untitled')}</a></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px;">${(a.reasons || []).map(secEsc).join(' · ')}${a.timeframe ? ' · horizon ' + secEsc(a.timeframe) : ''}</div>
+        ${a.summary ? `<div style="font-size:11.5px;margin-top:3px;">${secEsc(a.summary.slice(0, 200))}</div>` : ''}
+        <div class="urg-bar" title="urgency ${a.urgency}"><div class="urg-fill" data-w="${pct}"></div></div>
+      </div>
+      <div style="font-size:16px;font-weight:800;color:var(--red);font-variant-numeric:tabular-nums;" class="disc-urg" data-n="${a.urgency}">0</div>
+    </div>`;
+  }).join('');
+  const news = (d.new_arrivals || []).map((a, i) =>
+    `<div class="attn disc-rise" style="animation-delay:${i * 70}ms;border-left-color:var(--accent);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;">${a.is_new ? '<span class="new-badge">NEW</span>' : ''}<a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 100))}</a></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px;"><span class="type-badge badge-${a.artifact_type}">${secEsc(a.artifact_type)}</span> ${secEsc(a.age_label)} · ${a.connections} links</div>
+      </div>
+    </div>`).join('');
+  const mx = Math.max(1, d.max_degree || 1);
+  const inf = (d.influential || []).map((a, i) => {
+    const pct = Math.round(a.degree / mx * 100);
+    return `<div class="disc-rise" style="animation-delay:${i * 80}ms;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;display:flex;justify-content:space-between;gap:8px;"><a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a><strong style="font-variant-numeric:tabular-nums;">${a.degree} links</strong></div>
+      <div class="inf-bar"><div class="inf-fill" data-w="${pct}"></div></div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="disc-wrap">
+    <div class="tl-card disc-rise"><h3><i class="fas fa-sparkles"></i> Discoveries <button class="btn btn-sm" style="float:right;" onclick="discoveriesLoaded=true;loadDiscoveries();"><i class="fas fa-rotate"></i> Refresh</button></h3>
+      <div class="disc-hero">
+        <div class="tl-stat"><div class="v" id="discNAttn">0</div><div class="l">need attention now</div></div>
+        <div class="tl-stat"><div class="v" id="discNNew">0</div><div class="l">arrived this week</div></div>
+        <div class="tl-stat"><div class="v" id="discNLinks">0</div><div class="l">most-linked finding</div></div>
+      </div>
+    </div>
+    <div class="disc-card disc-rise" style="animation-delay:120ms;"><h3><i class="fas fa-bell"></i> Needs immediate attention (${d.attention_count || 0})</h3>${attn || '<span style="color:var(--text2)">All quiet — no high-urgency risks on record.</span>'}</div>
+    <div class="disc-card disc-rise" style="animation-delay:200ms;"><h3><i class="fas fa-bolt"></i> New &amp; influential discoveries</h3>
+      <h4 style="font-size:12px;margin:10px 0 4px;">Latest arrivals</h4>${news}
+      <h4 style="font-size:12px;margin:14px 0 4px;">Most influential findings (by graph links)</h4>${inf}
+    </div>
+    <div class="tl-fresh">Ranked live · updated with every ingestion run.</div>
+  </div>`;
+  discCountUp(document.getElementById('discNAttn'), d.attention_count || 0);
+  discCountUp(document.getElementById('discNNew'), d.new_this_week || 0);
+  discCountUp(document.getElementById('discNLinks'), d.max_degree || 0);
+  document.querySelectorAll('#discoveriesView .disc-urg').forEach(x => discCountUp(x, parseFloat(x.getAttribute('data-n')), ''));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('#discoveriesView .urg-fill, #discoveriesView .inf-fill').forEach(b => { b.style.width = b.getAttribute('data-w') + '%'; });
+  }));
 }
 
 async function loadPlausibility() {
