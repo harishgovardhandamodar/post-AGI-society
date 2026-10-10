@@ -678,6 +678,7 @@ def _clean_text(text: str | None, limit: int = 0) -> str:
     import re as _re
     import html as _html
     s = _re.sub(r"<[^>]+>", " ", _html.unescape(text or ""))
+    s = _re.sub(r"<[^>]*$", "", s)  # trailing unterminated tag from truncation
     s = _re.sub(r"\s+", " ", s).strip()
     return s[:limit] if limit and len(s) > limit else s
 
