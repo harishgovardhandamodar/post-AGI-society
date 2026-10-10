@@ -1481,7 +1481,7 @@ function renderSecurityReport(data) {
   const color = secSeverityColor(data.overall_pct);
   const threats = data.threats || [];
   const dg = data.diagrams || {};
-  let rows = threats.map(t => `<tr><td><strong>${secEsc(t.id)}</strong></td><td>${secEsc(t.title)}<br/><span style="color:var(--text2);font-size:10.5px;">${secEsc(t.owasp)}</span></td><td>L${t.likelihood}×I${t.impact}=${t.score}</td><td><span class="sev-${t.severity}">${t.severity}</span></td></tr>`).join('');
+  let rows = threats.map(t => `<tr data-tid="${secEsc(t.id)}"><td><strong>${secEsc(t.id)}</strong></td><td>${secEsc(t.title)}<br/><span style="color:var(--text2);font-size:10.5px;">${secEsc(t.owasp)}</span></td><td>L${t.likelihood}×I${t.impact}=${t.score}</td><td><span class="sev-${t.severity}">${t.severity}</span></td></tr>`).join('');
   let details = threats.map(t => `<div class="sec-card"><h4>${secEsc(t.id)} — ${secEsc(t.title)} <span class="sev-${t.severity}">${t.severity}</span></h4><p style="color:var(--text2)"><em>${secEsc(t.stride)} · ${secEsc(t.owasp)} · L${t.likelihood} × I${t.impact} = ${t.score}</em></p><p>${secEsc(t.description)}</p><ul style="margin-left:18px;">${(t.mitigations || []).map(m => `<li>${secEsc(m)}</li>`).join('')}</ul></div>`).join('');
   const exploits = data.known_exploits || [];
   let exploitsHtml;
@@ -1517,6 +1517,9 @@ function renderSecurityReport(data) {
         <button class="btn btn-sm btn-primary" onclick="downloadSecurityMarkdown()"><i class="fas fa-file-lines"></i> Markdown</button>
         <button class="btn btn-sm" onclick="downloadSecurityPDF()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-file-pdf"></i> PDF</button>
         <button class="btn btn-sm" onclick="window.print()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-print"></i> Print</button>
+        <button class="btn btn-sm" onclick="downloadSecurityBundle()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-box-archive"></i> ZIP pack</button>
+        <button class="btn btn-sm" onclick="downloadThreatsCSV()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-file-csv"></i> CSV</button>
+        <button class="btn btn-sm" onclick="downloadEvidenceBib()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);"><i class="fas fa-quote-left"></i> BibTeX</button>
       </div>
     </div>
     <div class="sec-card"><h3><i class="fas fa-diagram-project"></i> Data-flow &amp; trust boundary</h3><div class="sec-diagram"><div class="mermaid">${secEsc(dg.dataflow || '')}</div></div>
@@ -1530,6 +1533,33 @@ function renderSecurityReport(data) {
     <div class="sec-card"><h3><i class="fas fa-bug"></i> Known exploits &amp; research evidence <span style="font-weight:400;text-transform:none;letter-spacing:0;">(via agent-to-agent workflow)</span></h3>
       <div id="secExploits">${exploitsHtml}</div>
     </div>
+    <div class="sec-card"><h3><i class="fas fa-chart-column"></i> Threat analytics <span style="font-weight:400;font-size:11px;color:var(--text2)">· severity · STRIDE · L×I scatter · OWASP radar</span></h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
+        <div><h4>Severity distribution</h4><canvas id="secChartSev" height="180"></canvas></div>
+        <div><h4>STRIDE breakdown</h4><canvas id="secChartStride" height="180"></canvas></div>
+        <div><h4>Likelihood × Impact scatter</h4><canvas id="secChartScatter" height="180"></canvas></div>
+        <div><h4>OWASP LLM coverage</h4><canvas id="secChartOwasp" height="180"></canvas></div>
+      </div>
+      <h4 style="margin-top:12px;">Risk heat-map (click a cell to filter the register)</h4>
+      <div id="secHeatmap" style="overflow-x:auto;"></div>
+      <div id="secHeatFilter" style="margin-top:6px;font-size:11.5px;color:var(--text2);"></div>
+    </div>
+    <div class="sec-card"><h3><i class="fas fa-table"></i> Coverage &amp; gap analysis <span style="font-weight:400;font-size:11px;color:var(--text2)">· OWASP LLM 2025 · MITRE ATLAS · NIST AI RMF · LINDDUN</span></h3><div id="secCoverage"><span style="color:var(--text2)">Loading coverage…</span></div></div>
+    <div class="sec-card"><h3><i class="fas fa-flask"></i> What-if lab <span style="font-weight:400;font-size:11px;color:var(--text2)">· mitigation toggles → counterfactual overall</span></h3>
+      <div id="secWhatif"></div>
+      <div id="secWhatifResult" style="margin-top:8px;"></div>
+      <h4 style="margin-top:12px;">Sensitivity tornado (L±1 swing per threat)</h4><div id="secTornado"></div>
+      <h4 style="margin-top:12px;">Uncertainty — Monte Carlo (L/I ±1, n=1000)</h4>
+      <div style="max-width:520px;"><canvas id="secChartMC" height="160"></canvas></div><div id="secMCStats" style="font-size:11.5px;color:var(--text2);"></div>
+    </div>
+    <div class="sec-card"><h3><i class="fas fa-link"></i> Kill-chains <span style="font-weight:400;font-size:11px;color:var(--text2)">· multi-hop attack paths</span></h3><div id="secKillchains"><span style="color:var(--text2)">Loading kill-chains…</span></div></div>
+    <div class="sec-card"><h3><i class="fas fa-vial-circle-check"></i> Red-team harness <span style="font-weight:400;font-size:11px;color:var(--text2)">· run probes, log pass/fail as evidence</span></h3><div id="secRedteam"></div></div>
+    <div class="sec-card"><h3><i class="fas fa-users"></i> Research collaboration <span style="font-weight:400;font-size:11px;color:var(--text2)">· hypotheses · peer review · inter-rater κ · versions · compare</span></h3>
+      <div id="secCollab"></div>
+      <h4 style="margin-top:10px;">Compare assessments</h4>
+      <div style="display:flex;gap:8px;align-items:center;"><input id="secCompareIds" placeholder="e.g. 1,2,3" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;"/><button class="btn btn-sm" onclick="compareAssessments()">Compare</button></div>
+      <div id="secCompareOut" style="margin-top:8px;"></div>
+    </div>
     <div class="sec-card"><h3><i class="fas fa-route"></i> Agent-to-agent trail <span style="font-weight:400;text-transform:none;letter-spacing:0;">${data.a2a_task_id ? '· task ' + secEsc(data.a2a_task_id) : ''}</span></h3>
       <div style="font-size:11.5px;color:var(--text2);">${traceHtml}</div>
       ${queriesHtml}
@@ -1538,8 +1568,183 @@ function renderSecurityReport(data) {
     <div class="sec-card"><h3><i class="fas fa-file-lines"></i> Full report (Markdown)</h3><div class="sec-md" id="secMarkdown"></div></div>`;
   document.getElementById('secMarkdown').textContent = '';
   document.getElementById('secMarkdown').innerHTML = renderMarkdownLite(data.markdown || '');
-  if (window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: 'neutral' }); mermaid.run(); } catch (e) { mermaid.init(undefined, el.querySelectorAll('.mermaid')); } }
+  if (window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: 'neutral' }); mermaid.run(); } catch (e) { try { mermaid.init(undefined, el.querySelectorAll('.mermaid')); } catch (e2) {} } }
+  try { secRenderLocalCharts(data.threats || []); } catch (e) {}
+  if (data.id) { secLoadAnalytics(data.id); secLoadCollab(); }
 }
+
+
+/* ---- Security analytics (charts, heatmap, coverage, what-if, kill-chain, collab) ---- */
+window._secCharts = window._secCharts || {};
+function secDestroy(id) { try { if (window._secCharts[id]) { window._secCharts[id].destroy(); delete window._secCharts[id]; } } catch (e) {} }
+
+function secRenderLocalCharts(threats) {
+  if (!window.Chart) return;
+  const sev = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  const stride = {};
+  const owasp = {};
+  threats.forEach(x => {
+    sev[x.severity] = (sev[x.severity] || 0) + 1;
+    stride[x.stride] = (stride[x.stride] || 0) + 1;
+    owasp[x.owasp] = (owasp[x.owasp] || 0) + 1;
+  });
+  ['secChartSev', 'secChartStride', 'secChartScatter', 'secChartOwasp'].forEach(secDestroy);
+  const cs = document.getElementById('secChartSev');
+  if (cs) window._secCharts.secChartSev = new Chart(cs, { type: 'bar',
+    data: { labels: Object.keys(sev), datasets: [{ data: Object.values(sev), backgroundColor: ['#f85149', '#d29922', '#58a6ff', '#3fb950'] }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  const cd = document.getElementById('secChartStride');
+  if (cd) window._secCharts.secChartStride = new Chart(cd, { type: 'doughnut',
+    data: { labels: Object.keys(stride), datasets: [{ data: Object.values(stride) }] }, options: { plugins: { legend: { position: 'bottom' } } } });
+  const csc = document.getElementById('secChartScatter');
+  if (csc) window._secCharts.secChartScatter = new Chart(csc, { type: 'scatter',
+    data: { datasets: [{ label: 'threats', data: threats.map(x => ({ x: x.likelihood, y: x.impact, label: x.id })),
+      backgroundColor: threats.map(x => x.severity === 'Critical' ? '#f85149' : x.severity === 'High' ? '#d29922' : x.severity === 'Medium' ? '#58a6ff' : '#3fb950') }] },
+    options: { scales: { x: { min: 0.5, max: 5.5, title: { display: true, text: 'Likelihood' } }, y: { min: 0.5, max: 5.5, title: { display: true, text: 'Impact' } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + (c.raw.label || '') + ' (L' + c.raw.x + '×I' + c.raw.y + ')' } } } } });
+  const co = document.getElementById('secChartOwasp');
+  if (co) window._secCharts.secChartOwasp = new Chart(co, { type: 'radar',
+    data: { labels: Object.keys(owasp).map(s => s.split(':')[0]), datasets: [{ label: 'threats per OWASP class', data: Object.values(owasp) }] },
+    options: { plugins: { legend: { display: false } }, scales: { r: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  // Heatmap 5x5 (rows L5..L1, cols I1..I5), click to filter register
+  const grid = {};
+  threats.forEach(x => { const k = x.likelihood + 'x' + x.impact; (grid[k] = grid[k] || []).push(x.id); });
+  let h = '<table class="sec-table" style="width:auto;"><tr><th></th><th>I1</th><th>I2</th><th>I3</th><th>I4</th><th>I5</th></tr>';
+  for (let li = 5; li >= 1; li--) {
+    h += '<tr><th>L' + li + '</th>';
+    for (let im = 1; im <= 5; im++) {
+      const ids = grid[li + 'x' + im] || [];
+      const bg = ids.length ? (li * im >= 9 ? 'rgba(248,81,73,.35)' : li * im >= 6 ? 'rgba(210,153,34,.3)' : 'rgba(88,166,255,.18)') : 'transparent';
+      h += `<td style="background:${bg};cursor:${ids.length ? 'pointer' : 'default'};min-width:44px;text-align:center;" ${ids.length ? `onclick="secFilterHeat('${ids.join(',')}')"` : ''}>${ids.join(' ') || '·'}</td>`;
+    }
+    h += '</tr>';
+  }
+  document.getElementById('secHeatmap').innerHTML = h + '</table>';
+}
+
+function secFilterHeat(ids) {
+  const set = new Set(ids.split(','));
+  document.getElementById('secHeatFilter').innerHTML = `Filtered to <strong>${secEsc(ids)}</strong> — <a href="#" onclick="secFilterHeatClear();return false;" style="color:var(--accent);">clear</a>`;
+  document.querySelectorAll('#secResult .sec-table tr[data-tid]').forEach(tr => {
+    tr.style.display = set.has(tr.getAttribute('data-tid')) ? '' : 'none';
+  });
+}
+function secFilterHeatClear() {
+  document.getElementById('secHeatFilter').innerHTML = '';
+  document.querySelectorAll('#secResult .sec-table tr[data-tid]').forEach(tr => { tr.style.display = ''; });
+}
+
+async function secLoadAnalytics(id) {
+  try {
+    const a = await (await fetch(`${API}/security/assessments/${id}/analytics`)).json();
+    // Coverage & gaps
+    const fw = a.framework_coverage || {};
+    const ow = (fw.owasp) || {};
+    document.getElementById('secCoverage').innerHTML =
+      `<p>OWASP LLM 2025 coverage: <strong>${ow.coverage_pct || 0}%</strong> (${Object.keys(ow.covered || {}).length}/10 classes).</p>` +
+      `<div style="overflow-x:auto;"><table class="sec-table"><tr><th>OWASP class</th><th>Threats</th></tr>` +
+      Object.entries(ow.covered || {}).map(([k, v]) => `<tr><td>${secEsc(k)}</td><td>${v.join(', ')}</td></tr>`).join('') +
+      ((ow.gaps || []).map(g => `<tr style="opacity:.65;"><td>${secEsc(g)}</td><td><em>gap — no threat mapped</em></td></tr>`).join('')) + '</table></div>' +
+      `<p style="margin-top:8px;">NIST AI RMF gaps: <strong>${secEsc((fw.nist || {}).gaps ? fw.nist.gaps.join(', ') || 'none' : '')}</strong><br/>LINDDUN gaps: <strong>${secEsc((fw.linddun || {}).gaps ? fw.linddun.gaps.join(', ') || 'none' : '')}</strong><br/>MITRE ATLAS techniques: <strong>${secEsc(Object.keys(fw.atlas || {}).join(", "))}</strong></p>` +
+      `<h4>Evidence grades (source tier + relevance + recency + corroboration)</h4>` +
+      ((a.evidence_grades || []).slice(0, 8).map(e => `<div style="font-size:11.5px;padding:3px 0;"><span class="sev-${e.evidence_grade === 'A' ? 'Low' : e.evidence_grade === 'B' ? 'Medium' : e.evidence_grade === 'C' ? 'High' : 'Critical'}" style="display:inline-block;min-width:22px;text-align:center;">${e.evidence_grade}</span> <a href="#" onclick="openArtifactById(${e.artifact_id});return false;" style="color:var(--accent);">${secEsc(e.title)}</a> <span style="color:var(--text2)">· rel ${e.relevance}</span></div>`).join('') || '<span style="color:var(--text2)">No evidence graded.</span>');
+    // Tornado
+    document.getElementById('secTornado').innerHTML = '<div style="overflow-x:auto;"><table class="sec-table"><tr><th>Threat</th><th>Swing (L−1 → L+1)</th><th>Overall range</th></tr>' +
+      (a.sensitivity || []).slice(0, 8).map(s => `<tr><td><strong>${secEsc(s.id)}</strong> ${secEsc((s.title || '').slice(0, 50))}</td><td>${s.swing}</td><td>${s.down} → ${s.up}</td></tr>`).join('') + '</table></div>';
+    // Monte Carlo
+    const mc = a.monte_carlo || {};
+    document.getElementById('secMCStats').innerHTML = `P5 ${mc.p5} · P25 ${mc.p25} · <strong>P50 ${mc.p50}</strong> · P75 ${mc.p75} · P90 ${mc.p90} · mean ${mc.mean} (n=${mc.n})`;
+    if (window.Chart && document.getElementById('secChartMC')) {
+      secDestroy('secChartMC');
+      window._secCharts.secChartMC = new Chart(document.getElementById('secChartMC'), { type: 'bar',
+        data: { labels: (mc.histogram || []).map(b => b.bin_start + '–' + b.bin_end), datasets: [{ data: (mc.histogram || []).map(b => b.count) }] },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+    }
+    // Kill-chains
+    document.getElementById('secKillchains').innerHTML = (a.killchains || []).map(k =>
+      `<div class="sec-card" style="margin:8px 0;"><h4>${secEsc(k.id)} — ${secEsc(k.title)} <span style="color:var(--text2)">· chain score ${k.chain_score}</span></h4><p style="font-size:12px;">${secEsc(k.narrative)}</p><p style="font-size:11.5px;color:var(--text2)">Hops: ${k.hops.join(' → ')}</p><div class="mermaid">${secEsc(k.mermaid)}</div></div>`).join('');
+    // What-if lab: per-threat Δ select
+    const threats = (currentSecurityData && currentSecurityData.threats) || [];
+    document.getElementById('secWhatif').innerHTML = '<div style="overflow-x:auto;"><table class="sec-table"><tr><th>Threat</th><th>Mitigated ΔL</th></tr>' +
+      threats.map(x => `<tr><td><strong>${secEsc(x.id)}</strong> ${secEsc(x.title.slice(0, 55))}</td><td><select data-wtid="${x.id}" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;"><option value="0">±0 (as assessed)</option><option value="-1">−1</option><option value="-2">−2</option><option value="-3">−3</option><option value="1">+1</option></select></td></tr>`).join('') +
+      '</table></div><button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="applyWhatIf()">Recompute counterfactual</button>';
+    if (window.mermaid) { try { mermaid.run(); } catch (e) {} }
+  } catch (e) { /* analytics optional */ }
+}
+
+async function applyWhatIf() {
+  const delta = {};
+  document.querySelectorAll('[data-wtid]').forEach(s => { if (s.value !== '0') delta[s.getAttribute('data-wtid')] = parseInt(s.value, 10); });
+  const res = await (await fetch(`${API}/security/assessments/${currentSecurityId}/whatif`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ likelihood_delta: delta }) })).json();
+  document.getElementById('secWhatifResult').innerHTML = `<strong>Counterfactual overall: ${res.overall_after}/100</strong> (was ${res.overall_before}, Δ ${res.overall_delta >= 0 ? '+' : ''}${res.overall_delta})`;
+}
+
+async function secLoadCollab() {
+  const d = currentSecurityData;
+  if (!d) return;
+  try {
+    const cov = await (await fetch(`${API}/security/coverage`)).json();
+    const suite = cov.redteam_suite || [];
+    const logged = ((d.redteam || {}).results || []).reduce((m, r) => (m[r.id] = r.verdict, m), {});
+    document.getElementById('secRedteam').innerHTML = suite.map(s =>
+      `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);"><strong>${s.id}</strong> → ${s.threat_id}: ${secEsc(s.title)} <span style="color:var(--text2)">[${logged[s.id] ? 'logged: ' + logged[s.id] : 'not run'}]</span><br/><span style="color:var(--text2)">${secEsc(s.probe)}</span><br/><button class="btn btn-sm" onclick="logRedTeam('${s.id}','pass')">Pass</button> <button class="btn btn-sm" onclick="logRedTeam('${s.id}','fail')">Fail</button></div>`).join('') +
+      `<div id="secRedteamSummary" style="margin-top:6px;font-size:12px;"></div>`;
+  } catch (e) {}
+  const hyps = d.hypotheses || [];
+  const revs = d.reviews || [];
+  document.getElementById('secCollab').innerHTML =
+    `<p style="font-size:12px;color:var(--text2);">Status: <strong>${secEsc(d.status)}</strong> · version <strong>v${d.version}</strong>${d.parent_id ? ' (cloned from #' + d.parent_id + ')' : ''} <button class="btn btn-sm" onclick="cloneAssessment()">Clone as v${(d.version || 1) + 1}</button></p>` +
+    `<h4>Hypotheses (${hyps.length})</h4>` + (hyps.map(h => `<div style="font-size:12px;">• <strong>${secEsc(h.id)}</strong> ${secEsc(h.statement)} <span style="color:var(--text2)">[${secEsc(h.status)}]</span></div>`).join('') || '<span style="color:var(--text2);font-size:12px;">none yet</span>') +
+    `<div style="display:flex;gap:6px;margin-top:6px;"><input id="secHypS" placeholder="statement" style="flex:2;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;"/><input id="secHypP" placeholder="prediction" style="flex:2;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;"/><button class="btn btn-sm" onclick="submitHypothesis()">Add</button></div>` +
+    `<h4 style="margin-top:10px;">Peer reviews (${revs.length}) — 2 approvals publish</h4>` + (revs.map(r => `<div style="font-size:12px;">• <strong>${secEsc(r.reviewer)}</strong> [${secEsc(r.verdict)}] ${secEsc(r.comments)}</div>`).join('') || '<span style="color:var(--text2);font-size:12px;">no reviews yet</span>') +
+    `<div style="display:flex;gap:6px;margin-top:6px;"><input id="secRevR" placeholder="reviewer" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;"/><select id="secRevV" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;"><option value="approve">approve</option><option value="comment">comment</option><option value="request-changes">request-changes</option></select><input id="secRevC" placeholder="comments" style="flex:2;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;"/><button class="btn btn-sm" onclick="submitReview()">Submit</button></div>` +
+    `<h4 style="margin-top:10px;">Inter-rater reliability</h4><div style="font-size:12px;color:var(--text2);">Each rater scores L per threat 1–5; κ computed between first two raters.</div><div style="display:flex;gap:6px;margin-top:6px;"><input id="secRateR" placeholder="rater name" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;"/><input id="secRateL" placeholder="L scores, e.g. 5,4,5,4,3,3,3,4,4,3,3,3" style="flex:3;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px;"/><button class="btn btn-sm" onclick="submitRating()">Rate</button></div><div id="secKappa" style="font-size:12px;margin-top:4px;"></div>`;
+}
+
+async function logRedTeam(id, verdict) {
+  const d = currentSecurityData || { redteam: {} };
+  const cur = ((d.redteam || {}).results || []).filter(r => r.id !== id);
+  cur.push({ id, verdict, notes: '' });
+  const res = await (await fetch(`${API}/security/assessments/${currentSecurityId}/redteam`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ results: cur }) })).json();
+  document.getElementById('secRedteamSummary').innerHTML = `Logged: ${res.passed} pass / ${res.failed} fail of ${res.total} probes.`;
+  currentSecurityData.redteam = res.redteam;
+}
+async function submitHypothesis() {
+  const s = document.getElementById('secHypS').value.trim(); if (!s) return;
+  const p = document.getElementById('secHypP').value.trim();
+  const cur = (currentSecurityData.hypotheses || []).concat([{ statement: s, prediction: p, status: 'open' }]);
+  const res = await (await fetch(`${API}/security/assessments/${currentSecurityId}/hypotheses`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hypotheses: cur }) })).json();
+  currentSecurityData.hypotheses = res.hypotheses; secLoadCollab();
+}
+async function submitReview() {
+  const r = document.getElementById('secRevR').value.trim() || 'anonymous';
+  const v = document.getElementById('secRevV').value;
+  const c = document.getElementById('secRevC').value.trim();
+  const res = await (await fetch(`${API}/security/assessments/${currentSecurityId}/reviews`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer: r, verdict: v, comments: c }) })).json();
+  currentSecurityData.reviews = res.reviews; currentSecurityData.status = res.status; secLoadCollab();
+}
+async function submitRating() {
+  const r = document.getElementById('secRateR').value.trim() || 'rater-1';
+  const tids = (currentSecurityData.threats || []).map(x => x.id);
+  const vals = document.getElementById('secRateL').value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+  const lik = {}; tids.forEach((t, i) => { lik[t] = vals[i] != null ? vals[i] : 3; });
+  const res = await (await fetch(`${API}/security/assessments/${currentSecurityId}/ratings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rater: r, likelihood: lik, impact: {} }) })).json();
+  document.getElementById('secKappa').innerHTML = res.kappa_likelihood ? `κ(L) = <strong>${res.kappa_likelihood.kappa}</strong> (agreement ${res.kappa_likelihood.agreement}, n=${res.kappa_likelihood.n}) · ratings: ${res.ratings_count}` : `Recorded (${res.ratings_count} rater(s)). A second rater enables κ.`;
+}
+async function cloneAssessment() {
+  const data = await (await fetch(`${API}/security/assessments/${currentSecurityId}/clone`, { method: 'POST' })).json();
+  currentSecurityId = data.id; currentSecurityData = data; renderSecurityReport(data);
+}
+async function compareAssessments() {
+  const ids = document.getElementById('secCompareIds').value.trim(); if (!ids) return;
+  const res = await (await fetch(`${API}/security/compare?ids=${encodeURIComponent(ids)}`)).json();
+  document.getElementById('secCompareOut').innerHTML = '<div style="overflow-x:auto;"><table class="sec-table"><tr><th>Threat</th>' +
+    res.assessments.map(a => `<th>#${a.id} ${a.overall_pct}</th>`).join('') + '<th>Δ</th></tr>' +
+    res.threat_matrix.map(r => `<tr><td><strong>${r.id}</strong></td>` + res.assessments.map(a => `<td>${r['a' + a.id] != null ? r['a' + a.id] : '–'}</td>`).join('') + `<td>${r.delta >= 0 ? '+' : ''}${r.delta}</td></tr>`).join('') + '</table></div>';
+}
+function downloadSecurityBundle() { if (currentSecurityId) window.open(`${API}/security/assessments/${currentSecurityId}/export.zip`, '_blank'); }
+function downloadThreatsCSV() { if (currentSecurityId) window.open(`${API}/security/assessments/${currentSecurityId}/threats.csv`, '_blank'); }
+function downloadEvidenceBib() { if (currentSecurityId) window.open(`${API}/security/assessments/${currentSecurityId}/evidence.bib`, '_blank'); }
 
 function renderMarkdownLite(md) {
   let h = secEsc(md);
