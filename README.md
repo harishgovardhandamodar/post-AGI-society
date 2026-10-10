@@ -24,7 +24,7 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 |---|---|
 | **Discoveries (landing)** | Urgency-ranked attention queue · new-arrivals feed with NEW badges · influence ranking by graph degree · count-up / stagger / pulse animations · `GET /api/discoveries` |
 | **Knowledge graph** | vis-network zoom/pan/physics · type colors + glow · sentiment/confidence sizing · type filters + full-text search · similarity rings · diarized-concept cards for interviews & testimonies |
-| **Plausibility** | Animated overall ring · per-type cards (confidence bars, sentiment, evidence lists) · year-range + source-year filters · trend endpoint |
+| **Plausibility** | Animated overall ring · per-type cards (confidence bars, sentiment, evidence lists) · year-range + source-year filters · trend endpoint · **Classical/Agentic toggle** (agent deliberation with rationale, disagreement meters, reliability grades, A2A trace) |
 | **Timeline to AGI** | Live median forecast year + spread · 5-year-bucket chart · horizon bands (achieved/near/mid/far) · 5 open bridge gaps with evidence counts · auto-refreshes with ingestion |
 | **AI Security workbench** | 12-threat STRIDE + OWASP LLM catalog · normalized 0–100 scoring with drivers/breakdown · severity filter chips + L/I labels · coverage vs OWASP 2025 / ATLAS / NIST RMF / LINDDUN · what-if lab · Monte Carlo · kill-chains · red-team harness · hypotheses · peer review + Cohen's κ · versioning · ZIP/CSV/BibTeX exports |
 | **Ingestion** | RSS + Nitter + arXiv auto-pipeline (daily 04:00 UTC + Fetch button) · relevance filter · regex sentiment · tag extraction · projection detection · whistleblower-testimony detection · auto-relationships (capped) |
@@ -275,6 +275,7 @@ Represents the aggregate credibility-weighted outlook across all collected proje
 | GET | `/api/graph` | Full graph data (nodes + edges for vis-network) |
 | GET | `/api/stats` | Aggregate stats (counts, avg sentiment, projection breakdown) |
 | GET | `/api/plausibility` | Per-type plausibility with summaries and supporting artifacts |
+| GET | `/api/plausibility/agentic` | Agentic prediction (scout → forecaster → critic) with rationale, reliability, trace |
 | GET | `/api/timeline` | Median AGI year, horizon bands, bridge gaps, freshness (live) |
 | POST | `/api/relationships` | Create relationship |
 | POST | `/api/ingest/run` | Trigger scraper (runs in background) |
