@@ -6,34 +6,60 @@ from collections import defaultdict
 from datetime import datetime, timezone, datetime as dt
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+import logging
+
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from .config import (
+    ADMIN_TOKEN,
+    CORS_ORIGINS,
+    DATA_DIR,
+    INGEST_ENABLED,
+    INGEST_HOUR,
+    INGEST_MINUTE,
+    SEED_ON_STARTUP,
+)
+from .api_security import require_admin, safe_url
 from .database import init_db, get_db
 from .models import Artifact, Sentiment, Projection, Relationship, ArtifactType, SecurityAssessment
 from .seed_data import seed_database
 from .scraper import run_ingestion
 from . import security as sec_agent
 
+logger = logging.getLogger("ags")
+logging.basicConfig(level=logging.INFO)
+
 ingestion_stats = {"last_run": None, "items_fetched": 0, "total_runs": 0}
 ingestion_lock = threading.Lock()
 
-os.makedirs("data", exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+from contextlib import asynccontextmanager
 
 app = FastAPI(title="Post-AGI Society Dashboard")
 
+
+# CORS: wildcard origin is incompatible with credentials (and unsafe), so we
+# only enable credentials when explicit origins are configured via env.
+_wildcard = CORS_ORIGINS == ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=not _wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if _wildcard and ADMIN_TOKEN:
+    logger.warning(
+        "CORS is wide open ('*') while AGS_ADMIN_TOKEN is set; "
+        "configure AGS_CORS_ORIGINS for your real front-end origins."
+    )
 
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.isdir(static_dir):
@@ -59,45 +85,73 @@ def run_scheduled_ingestion():
         ingestion_lock.release()
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(run_scheduled_ingestion, "cron", hour=4, minute=0)
-scheduler.start()
-atexit.register(lambda: scheduler.shutdown(wait=False))
+if INGEST_ENABLED:
+    scheduler.add_job(run_scheduled_ingestion, "cron", hour=INGEST_HOUR, minute=INGEST_MINUTE)
+    scheduler.start()
+    atexit.register(lambda: scheduler.shutdown(wait=False))
 
 
-@app.on_event("startup")
-def on_start():
+async def on_start():
     init_db()
     _ensure_security_columns()
     db = next(get_db())
     try:
-        seed_database(db)
+        if SEED_ON_STARTUP:
+            seed_database(db)
     finally:
         db.close()
 
 
+# Modern lifespan handler (replaces deprecated @app.on_event("startup")).
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    await on_start()
+    yield
+
+
+app.router.lifespan_context = _lifespan
+
+
 class ArtifactCreate(BaseModel):
-    title: str
+    title: str = Field(..., min_length=1, max_length=500)
     artifact_type: str
     url: Optional[str] = None
-    description: Optional[str] = None
-    content: Optional[str] = None
-    source: Optional[str] = None
-    author: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=20000)
+    content: Optional[str] = Field(None, max_length=200000)
+    source: Optional[str] = Field(None, max_length=300)
+    author: Optional[str] = Field(None, max_length=300)
     date_published: Optional[datetime] = None
-    tags: Optional[str] = None
-    sentiment_score: Optional[float] = None
-    sentiment_label: Optional[str] = None
-    projection_type: Optional[str] = None
-    projection_confidence: Optional[float] = None
-    projection_timeframe: Optional[str] = None
-    projection_summary: Optional[str] = None
+    tags: Optional[str] = Field(None, max_length=2000)
+    sentiment_score: Optional[float] = Field(None, ge=-1, le=1)
+    sentiment_label: Optional[str] = Field(None, max_length=50)
+    projection_type: Optional[str] = Field(None, max_length=50)
+    projection_confidence: Optional[float] = Field(None, ge=0, le=1)
+    projection_timeframe: Optional[str] = Field(None, max_length=100)
+    projection_summary: Optional[str] = Field(None, max_length=5000)
+
+    @field_validator("artifact_type")
+    @classmethod
+    def _valid_type(cls, v: str) -> str:
+        allowed = {t.value for t in ArtifactType}
+        if v not in allowed:
+            raise ValueError(f"artifact_type must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("url")
+    @classmethod
+    def _valid_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        if safe_url(v) is None:
+            raise ValueError("url must be a valid http(s) URL")
+        return v.strip()
 
 
 class RelationshipCreate(BaseModel):
     source_id: int
     target_id: int
-    relationship_type: str
-    description: Optional[str] = None
+    relationship_type: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=2000)
 
 
 class SecurityAssessRequest(BaseModel):
@@ -198,7 +252,7 @@ def get_artifact(artifact_id: int, db: Session = Depends(get_db)):
     return result
 
 
-@app.post("/api/artifacts")
+@app.post("/api/artifacts", dependencies=[Depends(require_admin)])
 def create_artifact(data: ArtifactCreate, db: Session = Depends(get_db)):
     artifact = Artifact(
         title=data.title,
@@ -236,7 +290,7 @@ def create_artifact(data: ArtifactCreate, db: Session = Depends(get_db)):
     return _artifact_json(artifact)
 
 
-@app.delete("/api/artifacts/{artifact_id}")
+@app.delete("/api/artifacts/{artifact_id}", dependencies=[Depends(require_admin)])
 def delete_artifact(artifact_id: int, db: Session = Depends(get_db)):
     a = db.query(Artifact).filter(Artifact.id == artifact_id).first()
     if not a:
@@ -247,9 +301,35 @@ def delete_artifact(artifact_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/api/graph")
-def get_graph(db: Session = Depends(get_db)):
-    artifacts = db.query(Artifact).all()
-    relationships = db.query(Relationship).all()
+def get_graph(
+    db: Session = Depends(get_db),
+    limit: int = Query(1500, ge=1, le=5000),
+    type: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """Graph payload, bounded and filterable so the network view stays fast.
+
+    - `limit` caps node count (default 1500) — prevents unbounded payloads.
+    - `type` filters by artifact_type (comma-separated list allowed).
+    - `q` is a cheap substring filter on title/tags, applied before the cap.
+    Edges are pruned to only reference returned nodes.
+    """
+    node_query = db.query(Artifact)
+    if type:
+        types = [t.strip() for t in type.split(",") if t.strip()]
+        if types:
+            node_query = node_query.filter(Artifact.artifact_type.in_(types))
+    if q:
+        like = f"%{q.strip()}%"
+        node_query = node_query.filter(
+            (Artifact.title.ilike(like)) | (Artifact.tags.ilike(like))
+        )
+    # Newest first so the cap keeps the most relevant/recent portion of the graph.
+    artifacts = node_query.order_by(Artifact.date_published.desc().nullslast()).limit(limit).all()
+    node_ids = {a.id for a in artifacts}
+    relationships = db.query(Relationship).filter(
+        Relationship.source_id.in_(node_ids), Relationship.target_id.in_(node_ids)
+    ).all()
 
     # Bulk aggregates in 2 queries (was N+1: 2 queries per artifact).
     sent_rows = db.query(Sentiment.artifact_id, Sentiment.score).all()
@@ -284,6 +364,8 @@ def get_graph(db: Session = Depends(get_db)):
 
     edges = []
     for r in relationships:
+        if r.source_id not in node_ids or r.target_id not in node_ids:
+            continue
         edges.append({
             "id": r.id,
             "from": r.source_id,
@@ -1396,7 +1478,7 @@ def get_discoveries(db: Session = Depends(get_db)):
             "generated_at": now.isoformat()}
 
 
-@app.post("/api/relationships")
+@app.post("/api/relationships", dependencies=[Depends(require_admin)])
 def create_relationship(data: RelationshipCreate, db: Session = Depends(get_db)):
     src = db.query(Artifact).filter(Artifact.id == data.source_id).first()
     tgt = db.query(Artifact).filter(Artifact.id == data.target_id).first()
@@ -1426,7 +1508,7 @@ def ingest_status():
     return ingestion_stats
 
 
-@app.post("/api/ingest/run")
+@app.post("/api/ingest/run", dependencies=[Depends(require_admin)])
 def run_scraper_manual(db: Session = Depends(get_db)):
     if not ingestion_lock.acquire(blocking=False):
         raise HTTPException(429, "Ingestion already in progress")
@@ -1450,7 +1532,7 @@ def run_scraper_manual(db: Session = Depends(get_db)):
     return {"ingested": -1, "status": "started", "total_runs": ingestion_stats["total_runs"]}
 
 
-@app.post("/api/reseed")
+@app.post("/api/reseed", dependencies=[Depends(require_admin)])
 def reseed(db: Session = Depends(get_db)):
     db.query(Relationship).delete()
     db.query(Projection).delete()

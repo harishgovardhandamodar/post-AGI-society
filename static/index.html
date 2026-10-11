@@ -548,6 +548,49 @@ https://productresources.collibra.com/docs/collibra/latest/Content/Assets/Lifecy
 
 <script>
 const API = '/api';
+
+/* ---- Shared safety + fetch helpers (UI hardening pass) ---- */
+// HTML-escape any untrusted string before interpolating into innerHTML.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Only allow http(s) URLs into href attributes (blocks javascript:/data: links).
+function safeHref(u) {
+  if (!u) return '';
+  const s = String(u).trim();
+  return /^https?:\/\//i.test(s) ? s : '';
+}
+
+// Admin token for mutating endpoints (AGS_ADMIN_TOKEN on the backend).
+// Stored in localStorage; leave empty in local dev where auth is a no-op.
+function getAdminToken() { try { return localStorage.getItem('agsAdminToken') || ''; } catch (e) { return ''; } }
+function setAdminToken(t) { try { localStorage.setItem('agsAdminToken', t || ''); } catch (e) {} }
+
+// fetch wrapper: JSON in/out, res.ok enforced (throws with server detail),
+// X-Admin-Token attached automatically on mutating requests.
+async function apiFetch(url, opts) {
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers);
+  const method = (opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const tok = getAdminToken();
+    if (tok) headers['X-Admin-Token'] = tok;
+  }
+  const res = await fetch(url, Object.assign({}, opts, { method, headers }));
+  if (!res.ok) {
+    let detail = '';
+    try { const j = await res.json(); detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+    if (res.status === 401 && !getAdminToken()) {
+      const t = prompt('This operation needs the admin token (AGS_ADMIN_TOKEN on the server).\nEnter it now (leave empty to cancel):');
+      if (t) { setAdminToken(t.trim()); return apiFetch(url, opts); }
+    }
+    throw new Error((detail || res.statusText || 'Request failed') + ' [' + res.status + ']');
+  }
+  return res.status === 204 ? null : res.json();
+}
 let network = null;
 let nodes = null;
 let edges = null;
@@ -751,7 +794,7 @@ function buildTypeFilters() {
   const types = [...new Set(allArtifacts.map(a => a.artifact_type))];
   const container = document.getElementById('typeFilters');
   container.innerHTML = `<button class="filter-btn active" data-type="all">All</button>` +
-    types.map(t => `<button class="filter-btn" data-type="${t}">${t}</button>`).join('');
+    types.map(t => `<button class="filter-btn" data-type="${esc(t)}">${esc(t)}</button>`).join('');
   container.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -787,12 +830,12 @@ function renderArtifactList(items) {
     const sent = allArtifacts.find(x => x.id === a.id)?.sentiment;
     const dotColor = (typeof TYPE_COLORS !== 'undefined' && TYPE_COLORS[a.artifact_type]) || 'var(--border)';
     return `<div class="artifact-item" style="border-left-color:${dotColor};" onclick="focusNode(${a.id})" role="button" tabindex="0" onkeydown="if(event.key==='Enter')focusNode(${a.id})">
-      <div class="title"><span class="type-badge badge-${badge}">${badge}</span> ${secEscShort(a.title, 90)}</div>
+      <div class="title"><span class="type-badge badge-${esc(badge)}">${esc(badge)}</span> ${esc(secEscShort(a.title, 90))}</div>
       <div class="meta">
-        <span>${a.author || 'Unknown'}</span>
+        <span>${esc(a.author || 'Unknown')}</span>
         ${a.date_published ? `<span>${new Date(a.date_published).toLocaleDateString()}</span>` : ''}
-        ${sent !== undefined ? `<span style="color:${sent > 0 ? 'var(--green)' : sent < 0 ? 'var(--red)' : 'var(--text2)'}">sent: ${sent}</span>` : ''}
-        ${a.tags ? a.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('') : ''}
+        ${sent !== undefined ? `<span style="color:${sent > 0 ? 'var(--green)' : sent < 0 ? 'var(--red)' : 'var(--text2)'}">sent: ${Number(sent).toFixed(2)}</span>` : ''}
+        ${a.tags ? a.tags.split(',').map(t => `<span class="tag">${esc(t.trim())}</span>`).join('') : ''}
       </div>
     </div>`;
   }).join('');
@@ -1013,10 +1056,10 @@ async function openDetailOverlay(id) {
       <div style="display:flex;justify-content:space-between;align-items:start;gap:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
-            <span class="type-badge badge-${detail.artifact_type}">${detail.artifact_type}</span>
-            <span style="font-size:11px;color:var(--text2);">${detail.author || ''}${detail.date_published ? ' · ' + new Date(detail.date_published).toLocaleDateString() : ''}</span>
+            <span class="type-badge badge-${esc(detail.artifact_type)}">${esc(detail.artifact_type)}</span>
+            <span style="font-size:11px;color:var(--text2);">${esc(detail.author || '')}${detail.date_published ? ' · ' + new Date(detail.date_published).toLocaleDateString() : ''}</span>
           </div>
-          <h2 style="font-size:16px;font-weight:600;line-height:1.3;">${detail.title}</h2>
+          <h2 style="font-size:16px;font-weight:600;line-height:1.3;">${esc(detail.title)}</h2>
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <div class="sentiment-bar" style="margin-bottom:4px;">
@@ -1041,19 +1084,20 @@ async function openDetailOverlay(id) {
       html += `
         <div class="overlay-section">
           <h4><i class="fas fa-align-left"></i> Description</h4>
-          <p>${detail.description}${detail.content && !detail.content.startsWith('CONCEPT:') ? '&hellip;' : ''}</p>
+          <p>${esc(detail.description)}${detail.content && !detail.content.startsWith('CONCEPT:') ? '&hellip;' : ''}</p>
         </div>`;
     }
 
     // Source link — prominent button
-    if (detail.url) {
+    const _safeUrl = safeHref(detail.url);
+    if (_safeUrl) {
       html += `<div class="overlay-section">
         <h4><i class="fas fa-link"></i> Source</h4>
-        <a class="source-btn" href="${detail.url}" target="_blank" rel="noopener">
+        <a class="source-btn" href="${_safeUrl}" target="_blank" rel="noopener noreferrer">
           <i class="fas fa-external-link-alt"></i> Open Source
-          <span style="font-weight:400;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${detail.url}</span>
+          <span style="font-weight:400;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_safeUrl)}</span>
         </a>
-        ${detail.source ? `<span style="display:inline-block;margin-left:8px;font-size:11px;color:var(--text2);">via ${detail.source}</span>` : ''}
+        ${detail.source ? `<span style="display:inline-block;margin-left:8px;font-size:11px;color:var(--text2);">via ${esc(detail.source)}</span>` : ''}
       </div>`;
     }
 
@@ -1067,8 +1111,8 @@ async function openDetailOverlay(id) {
         const title = nl > 0 ? block.substring(8, nl).trim() : block.substring(8).trim();
         const body = nl > 0 ? block.substring(nl + 1).trim() : '';
         html += `<div class="concept-card">
-          <div class="concept-title"><i class="fas fa-lightbulb" style="font-size:10px;margin-right:4px;"></i>${title}</div>
-          ${body ? `<div class="concept-body">${body}</div>` : ''}
+          <div class="concept-title"><i class="fas fa-lightbulb" style="font-size:10px;margin-right:4px;"></i>${esc(title)}</div>
+          ${body ? `<div class="concept-body">${esc(body)}</div>` : ''}
         </div>`;
       });
       html += `</div>`;
@@ -1077,13 +1121,13 @@ async function openDetailOverlay(id) {
       html += `
         <div class="overlay-section">
           <h4><i class="fas fa-file-alt"></i> Full Summary</h4>
-          <p style="font-size:12px;line-height:1.6;white-space:pre-wrap;">${detail.content}</p>
+          <p style="font-size:12px;line-height:1.6;white-space:pre-wrap;">${esc(detail.content)}</p>
         </div>`;
     }
 
     // Tags
     if (detail.tags) {
-      const tags = detail.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('');
+      const tags = detail.tags.split(',').map(t => `<span class="tag">${esc(t.trim())}</span>`).join('');
       html += `<div class="overlay-section"><h4><i class="fas fa-tags"></i> Tags</h4><div>${tags}</div></div>`;
     }
 
@@ -1094,7 +1138,7 @@ async function openDetailOverlay(id) {
         const c = s.score > 0.2 ? 'var(--green)' : s.score < -0.2 ? 'var(--red)' : 'var(--text2)';
         html += `<div style="font-size:12px;display:flex;gap:8px;align-items:center;margin-bottom:2px;">
           <span style="color:${c};font-weight:600;">${s.score.toFixed(2)}</span>
-          <span style="color:var(--text2);">${s.label}${s.source ? ' · ' + s.source : ''}</span>
+          <span style="color:var(--text2);">${esc(s.label)}${s.source ? ' · ' + esc(s.source) : ''}</span>
         </div>`;
       });
       html += `</div>`;
@@ -1268,7 +1312,7 @@ async function ingestArtifact() {
 function populateRelateSelects() {
   const src = document.getElementById('relSource');
   const tgt = document.getElementById('relTarget');
-  const opts = allArtifacts.map(a => `<option value="${a.id}">${a.title.substring(0, 60)}</option>`).join('');
+  const opts = allArtifacts.map(a => `<option value="${a.id}">${esc(a.title.substring(0, 60))}</option>`).join('');
   src.innerHTML = opts; tgt.innerHTML = opts;
 }
 
