@@ -363,6 +363,33 @@ html.light .agent-out { background: #f0f2f5; }
 .tl-subbar button.active { background: var(--accent); color: var(--bg); }
 .tl-subbar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tl-fresh { font-size: 11px; color: var(--text2); text-align: center; padding: 8px; }
+
+/* ---- Timeline view v2: scrubber, density strip, progress rings ---- */
+.tl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.tl-search { flex: 1; min-width: 160px; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+.tl-chip { border: 1px solid var(--border); background: var(--bg3); color: var(--text2); border-radius: 14px; padding: 4px 12px; font-size: 11px; cursor: pointer; user-select: none; transition: all .15s; }
+.tl-chip:hover { border-color: var(--accent); color: var(--text); }
+.tl-chip.on { background: rgba(88,166,255,.15); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.tl-strip { position: relative; height: 46px; background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 6px; cursor: crosshair; }
+.tl-strip svg { display: block; width: 100%; height: 100%; }
+.tl-strip-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text2); margin-bottom: 10px; }
+.tl-nowline { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--green); pointer-events: none; }
+.tl-slider { width: 100%; accent-color: var(--accent); margin: 2px 0 4px; }
+.tl-readout { font-size: 11.5px; color: var(--text2); margin-bottom: 10px; }
+.tl-readout strong { color: var(--text); }
+.tl-daydot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--orange); margin-right: 6px; animation: tlPulse 1.6s ease-in-out infinite; }
+@keyframes tlPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(210,153,34,.5); } 50% { box-shadow: 0 0 0 5px rgba(210,153,34,0); } }
+.tl-node.future::before { background: var(--bg3); border: 2px dashed var(--text2); }
+.tl-node.warning::before { background: var(--red); }
+.tl-node.signal::before { background: var(--green); }
+.tl-date { font-size: 10.5px; color: var(--text2); letter-spacing: .3px; }
+.tl-ring { flex-shrink: 0; }
+.tl-ring-txt { font-size: 10px; font-weight: 800; fill: var(--text); }
+.tl-gap h3 { display: flex; align-items: center; gap: 8px; }
+.tl-gap-meta { font-size: 11px; color: var(--text2); margin-top: 6px; }
+.tl-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 10.5px; color: var(--text2); margin: 4px 0 8px; }
+.tl-legend span i { margin-right: 4px; }
+@media (prefers-reduced-motion: reduce) { .tl-daydot { animation: none; } }
 .sec-hist-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
 .sec-exp-blurb { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
 .sec-sort { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11.5px; }
@@ -548,6 +575,49 @@ https://productresources.collibra.com/docs/collibra/latest/Content/Assets/Lifecy
 
 <script>
 const API = '/api';
+
+/* ---- Shared safety + fetch helpers (UI hardening pass) ---- */
+// HTML-escape any untrusted string before interpolating into innerHTML.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Only allow http(s) URLs into href attributes (blocks javascript:/data: links).
+function safeHref(u) {
+  if (!u) return '';
+  const s = String(u).trim();
+  return /^https?:\/\//i.test(s) ? s : '';
+}
+
+// Admin token for mutating endpoints (AGS_ADMIN_TOKEN on the backend).
+// Stored in localStorage; leave empty in local dev where auth is a no-op.
+function getAdminToken() { try { return localStorage.getItem('agsAdminToken') || ''; } catch (e) { return ''; } }
+function setAdminToken(t) { try { localStorage.setItem('agsAdminToken', t || ''); } catch (e) {} }
+
+// fetch wrapper: JSON in/out, res.ok enforced (throws with server detail),
+// X-Admin-Token attached automatically on mutating requests.
+async function apiFetch(url, opts) {
+  opts = opts || {};
+  const headers = Object.assign({}, opts.headers);
+  const method = (opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const tok = getAdminToken();
+    if (tok) headers['X-Admin-Token'] = tok;
+  }
+  const res = await fetch(url, Object.assign({}, opts, { method, headers }));
+  if (!res.ok) {
+    let detail = '';
+    try { const j = await res.json(); detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+    if (res.status === 401 && !getAdminToken()) {
+      const t = prompt('This operation needs the admin token (AGS_ADMIN_TOKEN on the server).\nEnter it now (leave empty to cancel):');
+      if (t) { setAdminToken(t.trim()); return apiFetch(url, opts); }
+    }
+    throw new Error((detail || res.statusText || 'Request failed') + ' [' + res.status + ']');
+  }
+  return res.status === 204 ? null : res.json();
+}
 let network = null;
 let nodes = null;
 let edges = null;
@@ -584,7 +654,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initTabs();
   loadData();
-  switchMainView('discoveries');
+  // Deep link support: #timeline/<year>?q=<query> opens the Timeline scrubber there.
+  if (/^#timeline\/\d{4}/.test(location.hash || '')) { tlReadHash(); switchMainView('timeline'); }
+  else switchMainView('discoveries');
   document.getElementById('searchInput').addEventListener('input', debounce(filterArtifacts, 300));
 });
 
@@ -684,7 +756,8 @@ async function loadData() {
     const pc = await (await fetch(`${API}/plausibility`)).json();
     document.getElementById('cntPlaus').textContent = Object.keys(pc.by_type || pc).length || '';
     const tl = await (await fetch(`${API}/timeline`)).json();
-    document.getElementById('cntTl').textContent = (tl.gaps || []).length || '';
+    document.getElementById('cntTl').textContent = (tl.chrono || []).length || (tl.gaps || []).length || '';
+    if (!_tlData) _tlData = tl;   // warm the Timeline tab cache for instant open
   } catch (e) {}
   const statsData = await statsP;
   renderSentimentChart(statsData);
@@ -751,7 +824,7 @@ function buildTypeFilters() {
   const types = [...new Set(allArtifacts.map(a => a.artifact_type))];
   const container = document.getElementById('typeFilters');
   container.innerHTML = `<button class="filter-btn active" data-type="all">All</button>` +
-    types.map(t => `<button class="filter-btn" data-type="${t}">${t}</button>`).join('');
+    types.map(t => `<button class="filter-btn" data-type="${esc(t)}">${esc(t)}</button>`).join('');
   container.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -787,12 +860,12 @@ function renderArtifactList(items) {
     const sent = allArtifacts.find(x => x.id === a.id)?.sentiment;
     const dotColor = (typeof TYPE_COLORS !== 'undefined' && TYPE_COLORS[a.artifact_type]) || 'var(--border)';
     return `<div class="artifact-item" style="border-left-color:${dotColor};" onclick="focusNode(${a.id})" role="button" tabindex="0" onkeydown="if(event.key==='Enter')focusNode(${a.id})">
-      <div class="title"><span class="type-badge badge-${badge}">${badge}</span> ${secEscShort(a.title, 90)}</div>
+      <div class="title"><span class="type-badge badge-${esc(badge)}">${esc(badge)}</span> ${esc(secEscShort(a.title, 90))}</div>
       <div class="meta">
-        <span>${a.author || 'Unknown'}</span>
+        <span>${esc(a.author || 'Unknown')}</span>
         ${a.date_published ? `<span>${new Date(a.date_published).toLocaleDateString()}</span>` : ''}
-        ${sent !== undefined ? `<span style="color:${sent > 0 ? 'var(--green)' : sent < 0 ? 'var(--red)' : 'var(--text2)'}">sent: ${sent}</span>` : ''}
-        ${a.tags ? a.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('') : ''}
+        ${sent !== undefined ? `<span style="color:${sent > 0 ? 'var(--green)' : sent < 0 ? 'var(--red)' : 'var(--text2)'}">sent: ${Number(sent).toFixed(2)}</span>` : ''}
+        ${a.tags ? a.tags.split(',').map(t => `<span class="tag">${esc(t.trim())}</span>`).join('') : ''}
       </div>
     </div>`;
   }).join('');
@@ -1013,10 +1086,10 @@ async function openDetailOverlay(id) {
       <div style="display:flex;justify-content:space-between;align-items:start;gap:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
-            <span class="type-badge badge-${detail.artifact_type}">${detail.artifact_type}</span>
-            <span style="font-size:11px;color:var(--text2);">${detail.author || ''}${detail.date_published ? ' · ' + new Date(detail.date_published).toLocaleDateString() : ''}</span>
+            <span class="type-badge badge-${esc(detail.artifact_type)}">${esc(detail.artifact_type)}</span>
+            <span style="font-size:11px;color:var(--text2);">${esc(detail.author || '')}${detail.date_published ? ' · ' + new Date(detail.date_published).toLocaleDateString() : ''}</span>
           </div>
-          <h2 style="font-size:16px;font-weight:600;line-height:1.3;">${detail.title}</h2>
+          <h2 style="font-size:16px;font-weight:600;line-height:1.3;">${esc(detail.title)}</h2>
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <div class="sentiment-bar" style="margin-bottom:4px;">
@@ -1041,19 +1114,20 @@ async function openDetailOverlay(id) {
       html += `
         <div class="overlay-section">
           <h4><i class="fas fa-align-left"></i> Description</h4>
-          <p>${detail.description}${detail.content && !detail.content.startsWith('CONCEPT:') ? '&hellip;' : ''}</p>
+          <p>${esc(detail.description)}${detail.content && !detail.content.startsWith('CONCEPT:') ? '&hellip;' : ''}</p>
         </div>`;
     }
 
     // Source link — prominent button
-    if (detail.url) {
+    const _safeUrl = safeHref(detail.url);
+    if (_safeUrl) {
       html += `<div class="overlay-section">
         <h4><i class="fas fa-link"></i> Source</h4>
-        <a class="source-btn" href="${detail.url}" target="_blank" rel="noopener">
+        <a class="source-btn" href="${_safeUrl}" target="_blank" rel="noopener noreferrer">
           <i class="fas fa-external-link-alt"></i> Open Source
-          <span style="font-weight:400;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${detail.url}</span>
+          <span style="font-weight:400;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(_safeUrl)}</span>
         </a>
-        ${detail.source ? `<span style="display:inline-block;margin-left:8px;font-size:11px;color:var(--text2);">via ${detail.source}</span>` : ''}
+        ${detail.source ? `<span style="display:inline-block;margin-left:8px;font-size:11px;color:var(--text2);">via ${esc(detail.source)}</span>` : ''}
       </div>`;
     }
 
@@ -1067,8 +1141,8 @@ async function openDetailOverlay(id) {
         const title = nl > 0 ? block.substring(8, nl).trim() : block.substring(8).trim();
         const body = nl > 0 ? block.substring(nl + 1).trim() : '';
         html += `<div class="concept-card">
-          <div class="concept-title"><i class="fas fa-lightbulb" style="font-size:10px;margin-right:4px;"></i>${title}</div>
-          ${body ? `<div class="concept-body">${body}</div>` : ''}
+          <div class="concept-title"><i class="fas fa-lightbulb" style="font-size:10px;margin-right:4px;"></i>${esc(title)}</div>
+          ${body ? `<div class="concept-body">${esc(body)}</div>` : ''}
         </div>`;
       });
       html += `</div>`;
@@ -1077,13 +1151,13 @@ async function openDetailOverlay(id) {
       html += `
         <div class="overlay-section">
           <h4><i class="fas fa-file-alt"></i> Full Summary</h4>
-          <p style="font-size:12px;line-height:1.6;white-space:pre-wrap;">${detail.content}</p>
+          <p style="font-size:12px;line-height:1.6;white-space:pre-wrap;">${esc(detail.content)}</p>
         </div>`;
     }
 
     // Tags
     if (detail.tags) {
-      const tags = detail.tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('');
+      const tags = detail.tags.split(',').map(t => `<span class="tag">${esc(t.trim())}</span>`).join('');
       html += `<div class="overlay-section"><h4><i class="fas fa-tags"></i> Tags</h4><div>${tags}</div></div>`;
     }
 
@@ -1094,7 +1168,7 @@ async function openDetailOverlay(id) {
         const c = s.score > 0.2 ? 'var(--green)' : s.score < -0.2 ? 'var(--red)' : 'var(--text2)';
         html += `<div style="font-size:12px;display:flex;gap:8px;align-items:center;margin-bottom:2px;">
           <span style="color:${c};font-weight:600;">${s.score.toFixed(2)}</span>
-          <span style="color:var(--text2);">${s.label}${s.source ? ' · ' + s.source : ''}</span>
+          <span style="color:var(--text2);">${esc(s.label)}${s.source ? ' · ' + esc(s.source) : ''}</span>
         </div>`;
       });
       html += `</div>`;
@@ -1268,7 +1342,7 @@ async function ingestArtifact() {
 function populateRelateSelects() {
   const src = document.getElementById('relSource');
   const tgt = document.getElementById('relTarget');
-  const opts = allArtifacts.map(a => `<option value="${a.id}">${a.title.substring(0, 60)}</option>`).join('');
+  const opts = allArtifacts.map(a => `<option value="${a.id}">${esc(a.title.substring(0, 60))}</option>`).join('');
   src.innerHTML = opts; tgt.innerHTML = opts;
 }
 
@@ -1337,10 +1411,13 @@ function switchMainView(view) {
 
 let timelineLoaded = false;
 let _tlChart = null;
+let _tlData = null;           // last /api/timeline payload (for re-render without refetch)
+let _tlState = { kinds: { projection: true, signal: true, warning: true }, q: '', year: null, sub: 'road' };
 let tlSub = 'road';
-let _tlRoadData = null;
 function setTlSub(s) {
   tlSub = s;
+  _tlState.sub = s;
+  tlSyncHash();
   if (s === 'jobs' && !document.getElementById('profBody').dataset.done) loadProfessions();
   if (s === 'edge' && !document.getElementById('edgeBody').dataset.done) loadHumanEdge();
   if (s === 'safety' && !document.getElementById('safetyBody').dataset.done) loadSafetyDim();
@@ -1468,18 +1545,188 @@ async function loadTimeline() {
   const el = document.getElementById('timelineView');
   el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Charting the road to AGI…</div>';
   try {
-    const data = await (await fetch(`${API}/timeline`)).json();
+    const data = await apiFetch(`${API}/timeline`);
+    _tlData = data;
+    if (_tlState.year == null && data.where_we_are && data.where_we_are.median_agi_year != null) {
+      _tlState.year = Math.round(data.where_we_are.median_agi_year);
+    }
     renderTimeline(data);
+    tlApplyHashState();  // restore deep-linked subtab/search after first render
   } catch (e) {
-    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load timeline</div>';
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load timeline: ${esc(e.message || e)}</div>`;
   }
 }
 
-function tlItem(e) {
+/* ---- Timeline helpers ---- */
+function tlFilteredChrono(d) {
+  const q = (_tlState.q || '').toLowerCase();
+  return (d.chrono || []).filter(e => {
+    if (!_tlState.kinds[e.kind]) return false;
+    if (!q) return true;
+    const hay = ((e.artifact && e.artifact.title) || '') + ' ' + (e.summary || '') + ' ' + (e.timeframe || '');
+    return hay.toLowerCase().includes(q);
+  });
+}
+
+function tlBounds(d) {
+  const yrs = (d.chrono || []).map(e => e.year_mid).filter(y => y != null);
+  const lo = Math.min(...yrs, d.now_year - 10);
+  const hi = Math.max(...yrs, d.now_year + 15);
+  return [Math.floor(lo), Math.ceil(hi)];
+}
+
+function tlRingSvg(pct) {
+  const r = 13, c = 2 * Math.PI * r;
+  const col = pct >= 66 ? 'var(--green)' : pct >= 33 ? 'var(--orange)' : 'var(--red)';
+  return `<svg class="tl-ring" width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="progress ${pct}%">
+    <circle cx="17" cy="17" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="4"/>
+    <circle cx="17" cy="17" r="${r}" fill="none" stroke="${col}" stroke-width="4" stroke-linecap="round"
+      stroke-dasharray="${(c * pct / 100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 17 17)"/>
+    <text x="17" y="20.5" text-anchor="middle" class="tl-ring-txt">${pct}</text></svg>`;
+}
+
+function tlStripSvg(d) {
+  const items = tlFilteredChrono(d);
+  const [lo, hi] = tlBounds(d);
+  const span = Math.max(1, hi - lo);
+  const W = 600, H = 46, bins = 60;
+  const counts = new Array(bins).fill(0);
+  for (const e of items) {
+    if (e.year_mid == null) continue;
+    const b = Math.min(bins - 1, Math.max(0, Math.floor((e.year_mid - lo) / span * bins)));
+    counts[b]++;
+  }
+  const mx = Math.max(1, ...counts);
+  let bars = '';
+  for (let i = 0; i < bins; i++) {
+    if (!counts[i]) continue;
+    const bw = W / bins, h = 6 + (H - 10) * counts[i] / mx;
+    const yr = lo + (i + 0.5) / bins * span;
+    const col = yr <= d.now_year ? '#58a6ff' : '#bc8cff';
+    bars += `<rect x="${(i * bw).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${(bw - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${col}" opacity="0.85"><title>${Math.round(yr)} · ${counts[i]} item(s)</title></rect>`;
+  }
+  const nowX = ((d.now_year - lo) / span * W).toFixed(1);
+  const selX = _tlState.year != null ? ((Math.min(Math.max(_tlState.year, lo), hi) - lo) / span * W).toFixed(1) : null;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    ${bars}
+    <line x1="${selX ?? -1}" y1="0" x2="${selX ?? -1}" y2="${H}" stroke="var(--orange)" stroke-width="2"/>
+    <line x1="${nowX}" y1="0" x2="${nowX}" y2="${H}" stroke="var(--green)" stroke-width="2" stroke-dasharray="3 2"/>
+  </svg>`;
+}
+
+function tlItem(e, nowYear) {
   const a = e.artifact;
   const link = a ? `<a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 80))}</a>` : '';
-  return `<div class="tl-node"><span class="tl-type">${secEsc(e.type)}</span><strong>${secEsc(e.timeframe || '')}</strong> <span style="color:var(--text2)">· conf ${e.confidence}</span><br/>${secEsc((e.summary || '').slice(0, 220))}${link ? '<br/>' + link : ''}</div>`;
+  const future = !e.past;
+  const cls = `tl-node ${e.kind === 'warning' ? 'warning' : ''}${future ? ' future' : ''}`;
+  const dateStr = e.source_date ? String(e.source_date).slice(0, 10) : '';
+  const when = e.timeframe || (e.year_mid != null ? String(Math.round(e.year_mid)) : 'undated');
+  return `<div class="${cls}">
+    <span class="tl-type">${secEsc(e.kind)}</span><strong>${secEsc(when)}</strong>
+    ${e.confidence != null ? `<span style="color:var(--text2)">· conf ${e.confidence}</span>` : ''}
+    ${dateStr ? `<div class="tl-date">${secEsc(dateStr)}</div>` : ''}
+    <div>${secEsc((e.summary || '').slice(0, 220))}</div>${link}
+  </div>`;
 }
+
+function tlRenderScrubber(d) {
+  const wrap = document.getElementById('tlScrubWrap');
+  if (!wrap) return;
+  const items = tlFilteredChrono(d);
+  const [lo, hi] = tlBounds(d);
+  const at = _tlState.year;
+  const past = items.filter(e => e.year_mid != null && e.year_mid <= at).length;
+  const future = items.filter(e => e.year_mid != null && e.year_mid > at).length;
+  const today = items.some(e => e.year_mid != null && Math.abs(e.year_mid - d.now_year) < 0.5);
+  wrap.innerHTML = `${tlStripSvg(d)}
+    <input type="range" class="tl-slider" id="tlSlider" min="${lo}" max="${hi}" step="1" value="${at}"
+      oninput="tlSetYear(this.value)" aria-label="Scrub timeline year" />
+    <div class="tl-strip-labels"><span>${lo}</span><span>◀ past · present · future ▶</span><span>${hi}</span></div>
+    <div class="tl-readout"><span class="tl-daydot"></span>Reading the road at <strong>${at}</strong> —
+      <strong>${past}</strong> milestone${past === 1 ? '' : 's'} behind us · <strong>${future}</strong> ahead ·
+      ${today ? '<strong style="color:var(--green)">you are standing in the present</strong>' : `${Math.abs(at - d.now_year)} year${Math.abs(at - d.now_year) === 1 ? '' : 's'} ${at > d.now_year ? 'into the future' : 'in the past'}`}.</div>`;
+}
+
+function tlRenderRoad(d) {
+  const el = document.getElementById('tlRoad');
+  if (!el) return;
+  const items = tlFilteredChrono(d);
+  const at = _tlState.year;
+  const past = items.filter(e => e.year_mid != null && e.year_mid <= at)
+                    .sort((a, b) => b.year_mid - a.year_mid).slice(0, 12).reverse();
+  const ahead = items.filter(e => e.year_mid != null && e.year_mid > at)
+                     .sort((a, b) => a.year_mid - b.year_mid).slice(0, 12);
+  const undated = items.filter(e => e.year_mid == null).slice(0, 5);
+  const band = (label, list, note) =>
+    `<div class="tl-band-label">${label} (${list.length})</div>${note || ''}` +
+    (list.map(e => tlItem(e, d.now_year)).join('') || '<div style="font-size:12px;color:var(--text2);">Nothing on this stretch yet.</div>');
+  el.innerHTML =
+    band('Behind us — already forecast or happened', past) +
+    band('Ahead — what the graph predicts next', ahead) +
+    (undated.length ? band('Undated projections', undated) : '');
+}
+
+function tlSetYear(v) {
+  _tlState.year = parseInt(v, 10) || _tlState.year;
+  const r = document.getElementById('tlRoadYear');
+  if (r) r.textContent = _tlState.year;
+  tlSyncHash();
+  if (_tlData) { tlRenderScrubber(_tlData); tlRenderRoad(_tlData); }
+}
+
+function tlKindToggle(kind) {
+  _tlState.kinds[kind] = !_tlState.kinds[kind];
+  document.querySelectorAll('.tl-chip[data-kind]').forEach(c => {
+    c.classList.toggle('on', !!_tlState.kinds[c.dataset.kind]);
+  });
+  if (_tlData) { tlRenderScrubber(_tlData); tlRenderRoad(_tlData); }
+}
+
+function tlSearch(v) {
+  _tlState.q = v || '';
+  tlSyncHash();
+  if (_tlData) { tlRenderScrubber(_tlData); tlRenderRoad(_tlData); }
+}
+
+// Keep scrubber state in the URL (#timeline/2032?q=scaling&sub=jobs) for deep links.
+function tlSyncHash() {
+  try {
+    const params = [];
+    if (_tlState.q) params.push('q=' + encodeURIComponent(_tlState.q));
+    if (_tlState.sub && _tlState.sub !== 'road') params.push('sub=' + encodeURIComponent(_tlState.sub));
+    const q = params.length ? '?' + params.join('&') : '';
+    history.replaceState(null, '', `#timeline/${_tlState.year}${q}`);
+  } catch (e) {}
+}
+
+// Read #timeline/<year>?q=<query>&sub=<tab> back into scrubber state on load / hash change.
+function tlReadHash() {
+  const m = (location.hash || '').match(/^#timeline\/(\d{4})(?:\?(.*))?/);
+  if (!m) return false;
+  _tlState.year = parseInt(m[1], 10);
+  const params = new URLSearchParams(m[2] || '');
+  _tlState.q = params.get('q') || '';
+  const sub = params.get('sub');
+  _tlState.sub = ['road', 'jobs', 'edge', 'safety'].includes(sub) ? sub : 'road';
+  return true;
+}
+
+// Restore subtab + search box from a deep-linked hash once the timeline view exists.
+function tlApplyHashState() {
+  if (_tlState.sub && _tlState.sub !== 'road' && typeof setTlSub === 'function') setTlSub(_tlState.sub);
+  const inp = document.getElementById('tlSearchBox') || document.getElementById('tlSearch');
+  if (inp) inp.value = _tlState.q || '';
+}
+
+// React to browser back/forward between #timeline/... states without a full reload.
+window.addEventListener('hashchange', () => {
+  if (!tlReadHash()) return;
+  if (/^#timeline\/\d{4}/.test(location.hash || '')) {
+    switchMainView('timeline');
+    tlApplyHashState();
+    if (_tlData) { tlRenderScrubber(_tlData); tlRenderRoad(_tlData); }
+  }
+});
 
 function renderTimeline(d) {
   const el = document.getElementById('timelineView');
@@ -1487,25 +1734,19 @@ function renderTimeline(d) {
   const dist = w.type_distribution || {};
   const distHtml = Object.entries(dist).map(([k, v]) =>
     `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;margin:3px 0;"><span style="width:120px;color:var(--text2);">${secEsc(k)}</span><div style="flex:1;background:var(--bg3);border-radius:4px;height:8px;"><div style="width:${Math.round(100 * v / Math.max(1, w.forecast_count))}%;background:var(--accent);height:8px;border-radius:4px;"></div></div><strong>${v}</strong></div>`).join('');
-  const bands = d.horizon_bands || {};
-  const bandMeta = [['achieved', 'Achieved — milestones whose window has closed'], ['near', 'Near horizon — next 3 years'], ['mid', 'Mid horizon — 3–7 years out'], ['far', 'Far horizon — 7+ years out']];
-  const roadHtml = bandMeta.map(([key, label]) => {
-    const items = bands[key] || [];
-    return `<div class="tl-band-label">${label} (${items.length})</div>` +
-      (items.map(e => tlItem(e)).join('') || '<div style="font-size:12px;color:var(--text2);">No dated forecasts in this band yet.</div>');
-  }).join('');
   const gapsHtml = (d.gaps || []).map(g =>
-    `<div class="tl-card tl-gap"><h3>${secEsc(g.title)} <span class="tl-open">OPEN</span></h3>
+    `<div class="tl-card tl-gap"><h3>${tlRingSvg(g.progress || 0)} ${secEsc(g.title)} <span class="tl-open">OPEN</span></h3>
      <p style="font-size:12.5px;"><strong>Bridged when:</strong> ${secEsc(g.bridged_when)}</p>
      <p style="font-size:12px;color:var(--text2);">${secEsc(g.why_open)}</p>
-     <p style="font-size:11.5px;">Evidence: <strong>${g.evidence_count}</strong> artifacts · <strong>${g.recent_count}</strong> in last 2 years · avg sentiment <strong>${g.avg_sentiment}</strong></p>
+     <p class="tl-gap-meta">Evidence: <strong>${g.evidence_count}</strong> artifacts · <strong>${g.recent_count}</strong> in last 2 years · avg sentiment <strong>${g.avg_sentiment}</strong> · bridge progress <strong>${g.progress || 0}%</strong></p>
      ${(g.key_items || []).map(a => `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a></div>`).join('')}</div>`).join('');
   const sigs = (d.recent_capability_signals || []).map(a =>
     `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a> <span style="color:var(--text2)">· ${(a.date || '').slice(0, 10)}</span></div>`).join('');
   const warns = (d.latest_warnings || []).map(a =>
     `<div style="font-size:12px;">• <a class="tl-link" onclick="openArtifactById(${a.id});return false;">${secEsc(a.title.slice(0, 90))}</a></div>`).join('');
   const f = d.freshness || {};
-  _tlRoadData = d;
+  const median = w.median_agi_year != null ? Math.round(w.median_agi_year) : null;
+  if (_tlState.year == null) _tlState.year = median || d.now_year;
   el.innerHTML = `<div class="tl-wrap">
     <div class="tl-subbar" role="group" aria-label="Timeline views">
       <button data-sub="road" class="active" onclick="setTlSub('road')"><i class="fas fa-route"></i> Road to AGI</button>
@@ -1516,7 +1757,7 @@ function renderTimeline(d) {
     <div id="tlPaneRoad">
     <div class="tl-card"><h3><i class="fas fa-hourglass-half"></i> Where we are toward AGI <button class="btn btn-sm" style="float:right;" onclick="timelineLoaded=true;loadTimeline();"><i class="fas fa-rotate"></i> Refresh</button></h3>
       <div class="tl-hero">
-        <div class="tl-stat"><div class="v">${w.median_agi_year != null ? Math.round(w.median_agi_year) : '—'}</div><div class="l">median forecast AGI year (${w.forecast_count || 0} dated forecasts)</div></div>
+        <div class="tl-stat"><div class="v">${median != null ? median : '—'}</div><div class="l">median forecast AGI year (${w.forecast_count || 0} dated forecasts)</div></div>
         <div class="tl-stat"><div class="v">${w.spread_p25 != null ? Math.round(w.spread_p25) + '–' + Math.round(w.spread_p75) : '—'}</div><div class="l">interquartile spread (p25–p75)</div></div>
         <div class="tl-stat"><div class="v">${d.warning_count || 0}</div><div class="l">whistleblower warnings on record</div></div>
         <div class="tl-stat"><div class="v">${f.total_artifacts || 0}</div><div class="l">artifacts in knowledge graph</div></div>
@@ -1526,10 +1767,29 @@ function renderTimeline(d) {
         <div><h4 style="font-size:12px;margin-bottom:6px;">Forecast mix by type</h4>${distHtml}</div>
       </div>
     </div>
-    <div class="tl-card"><h3><i class="fas fa-route"></i> Milestone road — dated projections</h3><div class="tl-road">${roadHtml}</div></div>
+    <div class="tl-card"><h3><i class="fas fa-sliders"></i> Scrub the road — drag through time</h3>
+      <div class="tl-toolbar">
+        <input class="tl-search" id="tlSearchBox" placeholder="Filter milestones, signals, warnings…" oninput="tlSearch(this.value)" aria-label="Filter timeline" />
+        <span class="tl-chip${_tlState.kinds.projection ? ' on' : ''}" data-kind="projection" onclick="tlKindToggle('projection')" role="button" tabindex="0">Projections</span>
+        <span class="tl-chip${_tlState.kinds.signal ? ' on' : ''}" data-kind="signal" onclick="tlKindToggle('signal')" role="button" tabindex="0">Capability signals</span>
+        <span class="tl-chip${_tlState.kinds.warning ? ' on' : ''}" data-kind="warning" onclick="tlKindToggle('warning')" role="button" tabindex="0">Warnings</span>
+        ${median != null ? `<span class="tl-chip" onclick="tlSetYear(${median})" role="button" tabindex="0" title="Jump to median AGI year">Jump to ${median}</span>` : ''}
+        <span class="tl-chip" onclick="tlSetYear(${d.now_year})" role="button" tabindex="0" title="Jump to today">Today</span>
+      </div>
+      <div id="tlScrubWrap"></div>
+    </div>
+    <div class="tl-card"><h3><i class="fas fa-route"></i> Milestone road <span style="font-weight:400;text-transform:none;">· around <strong id="tlRoadYear">${_tlState.year}</strong></span></h3>
+      <div class="tl-legend">
+        <span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);"></i>projection</span>
+        <span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);"></i>capability signal</span>
+        <span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);"></i>warning</span>
+        <span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;border:2px dashed var(--text2);"></i>future (dashed)</span>
+      </div>
+      <div class="tl-road" id="tlRoad"></div>
+    </div>
     <div class="tl-card"><h3><i class="fas fa-flask"></i> Latest capability signals</h3>${sigs || '<span style="color:var(--text2)">None yet.</span>'}</div>
     ${warns ? `<div class="tl-card"><h3><i class="fas fa-triangle-exclamation"></i> Latest insider warnings</h3>${warns}</div>` : ''}
-    <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:18px 0 12px;">What it takes to bridge there — 5 open gaps</h3>
+    <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin:18px 0 12px;">What it takes to bridge there — open gaps (ring = live progress estimate)</h3>
     ${gapsHtml}
     <div class="tl-fresh">Live from the knowledge graph · ${f.total_artifacts || 0} artifacts · ${f.total_projections || 0} projections · last ingest ${f.last_ingest || 'not run yet'} · refreshes with every ingestion run.</div>
     </div>
@@ -1553,11 +1813,17 @@ function renderTimeline(d) {
       </div>
     </div>
   </div>`;
+  tlRenderScrubber(d);
+  tlRenderRoad(d);
   if (window.Chart && document.getElementById('tlChart')) {
     try { if (_tlChart) _tlChart.destroy(); } catch (e) {}
+    const buckets = w.by_year || [];
+    const nowY = d.now_year;
     _tlChart = new Chart(document.getElementById('tlChart'), { type: 'bar',
-      data: { labels: (w.by_year || []).map(b => b.bucket), datasets: [{ label: 'forecasts', data: (w.by_year || []).map(b => b.count), backgroundColor: '#58a6ff' }] },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+      data: { labels: buckets.map(b => b.bucket), datasets: [{ label: 'forecasts', data: buckets.map(b => b.count),
+        backgroundColor: buckets.map(b => parseInt(String(b.bucket), 10) >= nowY ? '#bc8cff' : '#58a6ff') }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { footer: () => 'purple = future bucket' } } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
   }
 }
 
