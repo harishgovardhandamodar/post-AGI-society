@@ -52,12 +52,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .sidebar-right { background: var(--bg2); border-right: none; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; transition: width 0.2s, padding 0.2s, opacity 0.15s; width: 320px; }
 .layout.collapsed .sidebar-right { width: 0; padding: 16px 0; overflow: hidden; opacity: 0; }
 .layout.collapsed { grid-template-columns: 320px 1fr 0px; }
+/* Panel closed → tab content breathes: lift the 980px reading cap so tables,
+   cards and timelines use the freed ~320px instead of staying centered. */
+.layout.collapsed .tl-wrap,
+.layout.collapsed .disc-wrap { max-width: 1440px; }
+.layout.collapsed .fr-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .right-panel-toggle { position: fixed; top: 60px; right: 0; z-index: 50; background: var(--bg2); border: 1px solid var(--border); border-right: none; border-radius: 6px 0 0 6px; color: var(--text2); cursor: pointer; padding: 8px 6px; font-size: 13px; transition: right 0.2s; }
 .layout.collapsed .right-panel-toggle { right: 0; border-radius: 6px 0 0 6px; }
 .right-panel-toggle:hover { background: var(--bg3); color: var(--text); }
 .main { overflow: hidden; position: relative; background: var(--graph-bg); display: flex; flex-direction: column; }
 .main-tabs { display: flex; gap: 0; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.main-tabs { display: flex; gap: 6px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 8px 12px 0; }
+.main-tabs { display: flex; gap: 6px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 8px 12px 0; overflow-x: auto; }
+.main-tab { white-space: nowrap; }
 .main-tab { padding: 8px 16px 10px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text2); border: 1px solid transparent; border-bottom: none; border-radius: 10px 10px 0 0; transition: all 0.15s; user-select: none; display: flex; align-items: center; gap: 7px; }
 .main-tab:hover { color: var(--text); background: var(--bg3); }
 .main-tab.active { color: var(--accent); background: var(--graph-bg); border-color: var(--border); }
@@ -282,7 +288,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .sec-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--border); display: inline-block; }
 .sec-dots i.on-l { background: var(--accent); }
 .sec-dots i.on-i { background: var(--orange); }
-.tl-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; }
+.tl-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; transition: max-width .2s ease; }
 .tl-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .tl-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
 .tl-stat .v { font-size: 26px; font-weight: 800; color: var(--accent); }
@@ -323,7 +329,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .verdict-truncated { color: var(--orange); font-weight: 700; }
 .agent-out { background: #0a0e14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 11.5px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 html.light .agent-out { background: #f0f2f5; }
-.disc-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; }
+.disc-wrap { padding: 24px; overflow-y: auto; height: 100%; max-width: 980px; margin: 0 auto; transition: max-width .2s ease; }
 .disc-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .disc-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 8px rgba(0,0,0,.18); }
 .disc-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); margin-bottom: 12px; font-weight: 600; }
@@ -403,6 +409,35 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
 .sec-md code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
 .sec-md blockquote { border-left: 3px solid var(--accent); padding: 6px 12px; background: var(--bg3); border-radius: 0 6px 6px 0; margin: 8px 0; }
 .sec-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+/* ---- Frontier Race tab ---- */
+.fr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.fr-lead { display: flex; gap: 10px; align-items: flex-start; }
+.fr-crown { font-size: 26px; color: var(--orange); flex-shrink: 0; }
+.fr-tablewrap { overflow-x: auto; }
+.fr-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 8px; min-width: 1150px; }
+.fr-table th, .fr-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+.fr-table th { background: var(--bg3); color: var(--text2); font-size: 10.5px; text-transform: uppercase; }
+.fr-badge { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 9px; padding: 1px 8px; white-space: nowrap; }
+.fr-prop { background: rgba(248,81,73,.15); color: var(--red); }
+.fr-open { background: rgba(63,185,80,.15); color: var(--green); }
+.fr-hyb { background: rgba(210,153,34,.15); color: var(--orange); }
+.fr-api { background: rgba(248,81,73,.15); color: var(--red); }
+.fr-dc { background: rgba(188,140,255,.15); color: var(--purple); }
+.fr-ws { background: rgba(63,185,80,.15); color: var(--green); }
+.fr-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.fr-th:hover { color: var(--text); }
+.fr-racebar { height: 6px; background: var(--bg3); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+.fr-racebar > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); border-radius: 4px; }
+.fr-tl { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px; }
+.fr-tlevent { min-width: 150px; max-width: 190px; background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 11px; flex-shrink: 0; }
+.fr-tlevent .yr { font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fr-agi { border-left: 3px solid var(--purple); } .fr-asi { border-left: 3px solid var(--teal); }
+.fr-now { border-left: 3px solid var(--green); } .fr-ms { border-left: 3px solid var(--text2); }
+.fr-maprow { display: grid; grid-template-columns: 170px 1fr 120px; gap: 8px; align-items: center; font-size: 11.5px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.fr-maptrack { position: relative; height: 14px; background: var(--bg3); border-radius: 7px; }
+.fr-mapagi { position: absolute; top: 0; bottom: 0; background: rgba(188,140,255,.45); border-radius: 7px 0 0 7px; }
+.fr-mapasi { position: absolute; top: 0; bottom: 0; background: rgba(86,212,221,.45); border-radius: 0 7px 7px 0; }
+.fr-mapdot { position: absolute; top: -3px; width: 3px; height: 20px; background: var(--orange); }
 </style>
 </head>
 <body>
@@ -440,6 +475,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
       <div class="main-tab" data-view="graph" onclick="switchMainView('graph')"><i class="fas fa-project-diagram"></i> Graph <span class="cnt" id="cntGraph">0</span></div>
       <div class="main-tab" data-view="plausibility" onclick="switchMainView('plausibility')"><i class="fas fa-bullseye"></i> Plausibility <span class="cnt" id="cntPlaus">0</span></div>
       <div class="main-tab" data-view="timeline" onclick="switchMainView('timeline')"><i class="fas fa-hourglass-half"></i> Timeline <span class="cnt" id="cntTl">0</span></div>
+      <div class="main-tab" data-view="frontier" onclick="switchMainView('frontier')"><i class="fas fa-trophy"></i> Frontier Race <span class="cnt" id="cntFr">0</span></div>
       <div class="main-tab" data-view="agents" onclick="switchMainView('agents')"><i class="fas fa-robot"></i> Agents</div>
       <div class="main-tab" data-view="security" id="securityTab" style="display:none;" onclick="switchMainView('security')"><i class="fas fa-shield-halved"></i> AI Security</div>
     </div>
@@ -462,6 +498,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
       </div>
       <div id="plausibilityView"></div>
       <div id="timelineView" style="display:none;height:100%;"></div>
+      <div id="frontierView" style="display:none;height:100%;"></div>
       <div id="agentsView" style="display:none;height:100%;"></div>
       <div id="securityView">
         <div class="sec-grid">
@@ -1400,13 +1437,437 @@ function switchMainView(view) {
   document.getElementById('securityView').style.display = view === 'security' ? 'block' : 'none';
   document.getElementById('securityView').classList.toggle('visible', view === 'security');
   document.getElementById('timelineView').style.display = view === 'timeline' ? 'block' : 'none';
+  document.getElementById('frontierView').style.display = view === 'frontier' ? 'block' : 'none';
   document.getElementById('agentsView').style.display = view === 'agents' ? 'block' : 'none';
   if (view === 'agents' && !agentsLoaded) { agentsLoaded = true; loadAgents(); }
+  if (view === 'frontier' && !frontierLoaded) { frontierLoaded = true; loadFrontier(); }
   if (view === 'discoveries' && !discoveriesLoaded) { discoveriesLoaded = true; loadDiscoveries(); }
   if (view === 'timeline' && !timelineLoaded) { timelineLoaded = true; loadTimeline(); }
   if (view === 'graph' && network) setTimeout(() => network.fit({ animation: true }), 100);
   if (view === 'plausibility' && !plausibilityLoaded) { plausibilityLoaded = true; loadPlausibility(); }
   if (view === 'security' && window.mermaid) { try { mermaid.initialize({ startOnLoad: false, theme: 'neutral' }); } catch (e) {} }
+}
+
+let frontierLoaded = false;
+async function loadFrontier() {
+  const el = document.getElementById('frontierView');
+  el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Scouting the frontier labs…</div>';
+  try {
+    const d = await apiFetch(`${API}/frontier-race`);
+    const cnt = document.getElementById('cntFr');
+    if (cnt) cnt.textContent = d.summary ? d.summary.lab_count : '';
+    renderFrontier(d);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load frontier race: ${esc(e.message || e)}</div>`;
+  }
+}
+function frLicClass(t) { return t === 'open-weights' ? 'fr-open' : (t === 'hybrid' ? 'fr-hyb' : 'fr-prop'); }
+function frLicLabel(t) { return t === 'open-weights' ? 'open weights' : (t === 'hybrid' ? 'hybrid' : 'proprietary'); }
+function frRunClass(t) { return t === 'datacenter' ? 'fr-dc' : (t === 'workstation' ? 'fr-ws' : 'fr-api'); }
+function frRunLabel(t) { return t === 'datacenter' ? 'datacenter GPUs' : (t === 'workstation' ? 'workstation+' : 'API-only'); }
+function frChatPower(l) { const t = (l.run_tasks || []).find(x => x.id === 'chat'); return t ? t.power : '—'; }
+function frTaskRows() {
+  const d = window._frData || {};
+  const t = window._frTask || 'chat';
+  return (d.labs || []).map(l => {
+    const r = (l.run_tasks || []).find(x => x.id === t) || {};
+    return `<tr><td><strong>${esc(l.organization)}</strong><br/><span style="color:var(--text2);font-size:10.5px;">${esc(l.flagship_model || '')}</span></td>
+      <td>${esc(r.gpus || '—')}</td><td>${esc(r.vram || '—')}</td>
+      <td><strong>⚡ ${esc(r.power || '—')}</strong></td>
+      <td style="color:var(--text2);font-size:11px;">${esc(r.note || '')}</td></tr>`;
+  }).join('');
+}
+function frSetTask(id) {
+  window._frTask = id;
+  const d = window._frData || {};
+  document.querySelectorAll('#frTaskChips .tl-chip').forEach(c => c.classList.toggle('on', c.dataset.task === id));
+  const body = document.getElementById('frTaskBody');
+  if (body) body.innerHTML = frTaskRows();
+  const desc = document.getElementById('frTaskDesc');
+  if (desc) { const t = (d.run_task_defs || []).find(x => x.id === id); if (t) desc.textContent = t.desc || ''; }
+}
+/* ---- Frontier Race: sortable specs + live buzz + harness crown ---- */
+const FR_COLS = [
+  { key: 'organization', label: 'Organization' },
+  { key: 'country', label: 'Country' },
+  { key: 'disk_q4_gb', label: 'Disk (Q4)' },
+  { key: 'params_total_b', label: 'Params' },
+  { key: 'arch', label: 'Type' },
+  { key: 'license_type', label: 'License' },
+  { key: 'run_tier', label: 'GPU tier' },
+  { key: 'buzz_n', label: 'Buzz' },
+  { key: 'crown_score', label: 'Crown' },
+];
+function frFmtDisk(l) {
+  if (l.disk_q4_gb == null) return '<span style="color:var(--text2)">—</span>';
+  const e = (l.disk_est || l.params_est) ? '~' : '';
+  return `${e}${l.disk_q4_gb} GB`;
+}
+function frFmtParams(l) {
+  if (l.params_total_b == null) return '<span style="color:var(--text2)">Undisclosed</span>';
+  const e = l.params_est ? '~' : '';
+  return `${e}${l.params_total_b}B${l.params_active_b != null ? ` · ${l.params_active_b}B act` : ''}`;
+}
+function frFmtArch(a) { return a === 'moe' ? 'MoE' : (a === 'dense' ? 'dense' : (a === 'hybrid' ? 'hybrid' : '<span style="color:var(--text2)">—</span>')); }
+function frBuzzBadge(b) {
+  b = b || {};
+  const m = b.momentum || 'quiet';
+  const col = m === 'rising' ? 'var(--green)' : m === 'active' ? 'var(--orange)' : m === 'steady' ? 'var(--accent)' : 'var(--text2)';
+  const icon = m === 'rising' ? '🔥' : m === 'active' ? '▲' : m === 'steady' ? '●' : '○';
+  return `<span title="${b.mentions || 0} graph mentions · ${b.recent_90d || 0} in last 90d · sentiment ${b.sentiment}"><i class="fas fa-circle" style="font-size:7px;color:${col};"></i> ${icon} ${b.mentions || 0}</span>`;
+}
+function frSortVal(l, key) {
+  if (key === 'buzz_n') return ((l.buzz || {}).mentions || 0);
+  return l[key];
+}
+function frSortedLabs() {
+  const st = window._frSort || { key: 'crown_score', dir: -1 };
+  return [...(window._frData.labs || [])].sort((a, b) => {
+    const va = frSortVal(a, st.key), vb = frSortVal(b, st.key);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * st.dir;
+    return String(va).localeCompare(String(vb)) * st.dir;
+  });
+}
+function frContHead() {
+  const st = window._frSort || { key: 'crown_score', dir: -1 };
+  return '<tr>' + FR_COLS.map(c => {
+    const arrow = st.key === c.key ? (st.dir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th class="fr-th" onclick="frSetContSort('${c.key}')" role="button" tabindex="0" title="Sort by ${c.label}">${c.label}${arrow}</th>`;
+  }).join('') + '</tr>';
+}
+function frContRows() {
+  return frSortedLabs().map(l =>
+    `<tr><td><strong>${esc(l.organization)}</strong><br/><span style="color:var(--text2);font-size:10.5px;">${esc(l.flag || '')} ${esc(l.country || '')} · ${esc(l.org_size || '')}</span></td>
+     <td>${frFmtDisk(l)}<br/><span style="color:var(--text2);font-size:10.5px;">${l.disk_fp8_gb != null ? `FP8 ${l.disk_fp8_gb} GB` : 'weights closed'}</span></td>
+     <td>${frFmtParams(l)}</td>
+     <td>${frFmtArch(l.arch)}</td>
+     <td><strong>${esc(l.flagship_model || '')}</strong><br/><span style="color:var(--text2);font-size:10.5px;">${esc(l.model_family || '')}</span></td>
+     <td><span class="fr-badge ${frLicClass(l.license_type)}">${frLicLabel(l.license_type)}</span></td>
+     <td><span class="fr-badge ${frRunClass(l.run_tier)}">${frRunLabel(l.run_tier)}</span><br/><span style="font-size:10.5px;">${esc(l.run_gpus || '—')}</span></td>
+     <td style="white-space:nowrap;">${frBuzzBadge(l.buzz)}</td>
+     <td><strong>${l.crown_score}</strong></td></tr>`).join('');
+}
+function frRenderCont() {
+  const h = document.getElementById('frContHead'), b = document.getElementById('frContBody');
+  if (h) h.innerHTML = frContHead();
+  if (b) b.innerHTML = frContRows();
+}
+function frSetContSort(key) {
+  let st = window._frSort || { key: 'crown_score', dir: -1 };
+  if (st.key === key) { st = { key, dir: -st.dir }; }
+  else { st = { key, dir: (key === 'organization' || key === 'country' || key === 'arch' || key === 'license_type' || key === 'run_tier') ? 1 : -1 }; }
+  window._frSort = st;
+  frRenderCont();
+}
+function frHarnessRows() {
+  return (window._frData.harnesses || []).map(h =>
+    `<tr><td style="font-size:15px;text-align:center;">${h.rank === 1 ? '👑' : h.rank}</td>
+     <td><strong>${esc(h.tool)}</strong><br/><span style="color:var(--text2);font-size:10.5px;">${esc(h.vendor || '')} ${esc(h.flag || '')}</span></td>
+     <td>${esc(h.harness_type || '')}</td>
+     <td><span class="fr-badge ${frLicClass(h.license_type)}">${h.license_type === 'open-weights' ? 'open' : h.license_type}</span><br/><span style="color:var(--text2);font-size:10.5px;">${esc(h.license || '')}</span></td>
+     <td style="font-size:11px;">${esc(h.adoption || '')}<br/><span style="color:var(--text2);">${esc(h.bench || '')}</span></td>
+     <td style="white-space:nowrap;">${frBuzzBadge({ mentions: h.live_mentions, recent_90d: h.live_recent, sentiment: h.live_sentiment, momentum: h.momentum })}<br/><span style="color:var(--text2);font-size:10.5px;">${h.live_recent || 0}/90d · ${h.live_sentiment >= 0 ? '+' : ''}${h.live_sentiment}</span></td>
+     <td><div class="fr-racebar" style="min-width:90px;"><div style="width:${Math.min(100, h.live_adoption || 0)}%"></div></div><div style="font-size:11px;"><strong>${h.live_adoption}</strong> <span style="color:var(--text2)">(base ${h.adoption_score})</span></div></td></tr>`).join('');
+}
+function frGetEnergy() {
+  if (window._frEnergy) return window._frEnergy;
+  try {
+    const raw = localStorage.getItem('frEnergy');
+    if (raw) { window._frEnergy = JSON.parse(raw); return window._frEnergy; }
+  } catch (e) {}
+  window._frEnergy = { country: 'nl' };
+  return window._frEnergy;
+}
+function frSaveEnergy() { try { localStorage.setItem('frEnergy', JSON.stringify(window._frEnergy)); } catch (e) {} }
+function frEnergyRate() {
+  const d = window._frData || {}, st = frGetEnergy();
+  if (st.country === 'custom' && st.rate > 0) {
+    return { rate: st.rate, symbol: st.symbol || '€', name: 'custom rate' };
+  }
+  const r = (d.energy_rates || []).find(x => x.id === st.country) || (d.energy_rates || [])[0] || { per_kwh: 0.28, symbol: '€', country: 'Netherlands' };
+  return { rate: r.per_kwh, symbol: r.symbol, name: `${r.country} residential` };
+}
+function frFmtCost(kwhMo) {
+  const e = frEnergyRate();
+  return `${e.symbol}${(kwhMo * e.rate).toFixed(2)}`;
+}
+function frSetEnergy() {
+  const sel = document.getElementById('frEnergySel');
+  const id = sel ? sel.value : 'nl';
+  if (id === 'custom') {
+    window._frEnergy = Object.assign({ country: 'custom' }, window._frEnergy);
+  } else {
+    window._frEnergy = { country: id };
+  }
+  frSaveEnergy();
+  frRenderEnergyBar();
+  frRenderDesk();
+}
+function frSetCustomEnergy() {
+  const r = document.getElementById('frEnergyRate');
+  const s = document.getElementById('frEnergySymbol');
+  const v = r ? parseFloat(r.value) : NaN;
+  if (!(v > 0)) return;
+  window._frEnergy = { country: 'custom', rate: v, symbol: (s && s.value.trim()) || '€' };
+  frSaveEnergy();
+  frRenderEnergyBar();
+  frRenderDesk();
+}
+function frEnergyBarHtml() {
+  const d = window._frData || {}, st = frGetEnergy();
+  const opts = (d.energy_rates || []).map(r =>
+    `<option value="${r.id}"${st.country === r.id ? ' selected' : ''}>${esc(r.country)} · ${esc(r.symbol)}${r.per_kwh}/${r.currency}</option>`).join('') +
+    `<option value="custom"${st.country === 'custom' ? ' selected' : ''}>Custom…</option>`;
+  return `⚡ Energy <select id="frEnergySel" class="sec-sort" onchange="frSetEnergy()">${opts}</select> ` +
+    `<span id="frEnergyCustom" style="display:${st.country === 'custom' ? '' : 'none'};"><input id="frEnergyRate" type="number" min="0" step="0.01" placeholder="per kWh" value="${st.country === 'custom' && st.rate ? st.rate : ''}" style="width:86px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;" onchange="frSetCustomEnergy()" /><input id="frEnergySymbol" placeholder="€" value="${st.country === 'custom' && st.symbol ? esc(st.symbol) : ''}" style="width:44px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;" onchange="frSetCustomEnergy()" /> <button class="tl-chip" onclick="frSetCustomEnergy()">apply</button></span> ` +
+    `<span id="frEnergyHint" style="font-size:11px;color:var(--text2);"></span>`;
+}
+function frRenderEnergyBar() {
+  const bar = document.getElementById('frEnergyBar');
+  if (bar) {
+    const sel = document.getElementById('frEnergySel');
+    const keepCustom = sel && sel.value === 'custom' ? { rate: (document.getElementById('frEnergyRate') || {}).value, symbol: (document.getElementById('frEnergySymbol') || {}).value } : null;
+    bar.innerHTML = frEnergyBarHtml();
+    if (keepCustom) {
+      const r = document.getElementById('frEnergyRate'), s = document.getElementById('frEnergySymbol');
+      if (r && keepCustom.rate) r.value = keepCustom.rate;
+      if (s && keepCustom.symbol) s.value = keepCustom.symbol;
+    }
+  }
+  const hint = document.getElementById('frEnergyHint');
+  if (hint) { const e = frEnergyRate(); hint.textContent = `1 kWh = ${e.symbol}${e.rate} (${e.name}, incl. taxes — override above if yours differs)`; }
+}
+function frInitEnergy() { frGetEnergy(); frRenderEnergyBar(); }
+function frDeskUseCell(u) {
+  if (!u) return '—';
+  return Object.entries(u).map(([pid, v]) =>
+    `<div style="margin-bottom:4px;"><span class="fr-badge ${pid === 'regular' ? 'fr-ws' : 'fr-dc'}">${pid === 'regular' ? 'query' : 'agentic'}</span><br/>⚡ ~${v.draw_kw} kW · <strong>${v.kwh_day} kWh/day</strong><br/><span style="color:var(--text2);">~${v.kwh_mo} kWh/mo (<strong>${frFmtCost(v.kwh_mo)}</strong>)</span></div>`).join('');
+}
+function frGetRig() {
+  if (window._frRig) return window._frRig;
+  try {
+    const raw = localStorage.getItem('frRig');
+    if (raw) {
+      const p = JSON.parse(raw);
+      // migrate pre-bandwidth saved rigs against current presets
+      if ((p.bw == null || p.n == null) && p.id && window._frData && window._frData.rigs) {
+        const r = window._frData.rigs.find(x => x.id === p.id);
+        if (r) { p.bw = r.bw_gbs; p.n = r.gpu_count; }
+      }
+      if (p.usable > 0) { window._frRig = p; return p; }
+    }
+  } catch (e) {}
+  window._frRig = { id: 'dgx-spark', name: '1× DGX Spark 128GB', usable: 110, note: '', bw: 300, n: 1 };
+  return window._frRig;
+}
+function frSaveRig() { try { localStorage.setItem('frRig', JSON.stringify(window._frRig)); } catch (e) {} }
+function frRigFit(m) {
+  const rig = frGetRig();
+  const q4 = (m.disk_q4_gb || 0) + 4, fp = (m.params_b || 0) * 2 + 6;
+  if (q4 <= rig.usable) return { icon: '✅', cls: 'fr-ws', text: fp <= rig.usable ? 'Q4 · FP16' : 'Q4', need: q4 };
+  if (q4 <= rig.usable * 1.2) return { icon: '⚠️', cls: 'fr-hyb', text: 'Q3/offload', need: q4 };
+  return { icon: '❌', cls: 'fr-api', text: 'too big', need: q4 };
+}
+function frTps(m) {
+  // Decode-bound estimate: active weights re-read per token (Q4 bytes) against
+  // rig bandwidth; multi-GPU scales ~0.8/GPU. ±30% range, capped (overhead-bound).
+  const rig = frGetRig();
+  const active = m.active_b != null ? m.active_b : (m.params_b || 0);
+  const bytes = active * 0.55 + 2;
+  const bw = (rig.bw || 900) * (rig.n > 1 ? rig.n * 0.8 : 1);
+  const t = Math.min(0.5 * bw / Math.max(bytes, 1), rig.n > 1 ? 150 : 120);
+  return `~${Math.max(2, Math.round(t * 0.7))}–${Math.round(t * 1.3)} tok/s`;
+}
+function frDeskRows() {
+  const d = window._frData || {};
+  return (d.desktops || []).map(m => {
+    const f = frRigFit(m), rig = frGetRig();
+    return `<tr><td style="font-size:15px;text-align:center;">${m.rank === 1 ? '👑' : m.rank}</td>
+     <td style="white-space:nowrap;"><span class="fr-badge ${f.cls}" title="Needs ~${f.need}GB Q4 · rig has ${rig.usable}GB usable">${f.icon} ${f.text}</span>${f.icon === '✅' ? `<br/><span style="font-size:11px;" title="Decode-bound estimate on your rig: 0.5 × bandwidth ÷ active bytes">⚡ ${frTps(m)} est.</span>` : ''}</td>
+     <td><strong>${esc(m.model)}</strong><br/><span style="color:var(--text2);font-size:10.5px;">${esc(m.vendor || '')} ${esc(m.flag || '')}</span><br/><span style="color:var(--text2);font-size:10.5px;">${esc(m.blurb || '')}</span></td>
+     <td><strong>${m.params_b}B</strong>${m.active_b != null ? `<br/><span style="color:var(--text2);font-size:10.5px;">${m.active_b}B act</span>` : ''}</td>
+     <td>${frFmtArch(m.arch)}</td>
+     <td><span class="fr-badge ${frLicClass(m.license_type)}">${m.license_type === 'open-weights' ? 'open' : m.license_type}</span><br/><span style="color:var(--text2);font-size:10.5px;">${esc(m.license || '')}</span></td>
+     <td><strong>~${m.disk_q4_gb} GB</strong><br/><span style="color:var(--text2);font-size:10.5px;">Q4 · min ${esc(m.min_vram || '')}</span></td>
+     <td><strong>🎮 ${esc(m.home_gpus || '')}</strong></td>
+     <td>${frDeskUseCell(m.use)}</td>
+     <td style="white-space:nowrap;">${frBuzzBadge({ mentions: m.live_mentions, recent_90d: m.live_recent, sentiment: m.live_sentiment, momentum: m.momentum })}</td>
+     <td><div class="fr-racebar" style="min-width:80px;"><div style="width:${Math.min(100, m.live_home || 0)}%"></div></div><div style="font-size:11px;"><strong>${m.live_home}</strong> <span style="color:var(--text2)">(base ${m.home_score})</span></div></td></tr>`;
+  }).join('');
+}
+function frRigNote() {
+  const d = window._frData || {}, rig = frGetRig();
+  const total = (d.desktops || []).length;
+  const fits = (d.desktops || []).filter(m => frRigFit(m).icon === '✅').length;
+  return `<strong>${fits}/${total} fit on ${esc(rig.name)}</strong> (${rig.usable}GB usable). ${esc(rig.note || '')}`;
+}
+function frRenderDesk() {
+  const b = document.getElementById('frDeskBody');
+  if (b) b.innerHTML = frDeskRows();
+  const n = document.getElementById('frRigNote');
+  if (n) n.innerHTML = frRigNote();
+  document.querySelectorAll('#frRigChips .tl-chip[data-rig]').forEach(c => c.classList.toggle('on', c.dataset.rig === (frGetRig().id || '')));
+}
+function frSetRig(id) {
+  const d = window._frData || {};
+  const r = (d.rigs || []).find(x => x.id === id);
+  if (!r) return;
+  window._frRig = { id: r.id, name: r.name, usable: r.usable_vram, note: r.note, bw: r.bw_gbs, n: r.gpu_count };
+  const ci = document.getElementById('frRigCustom');
+  if (ci) ci.value = '';
+  const gi = document.getElementById('frRigGpus');
+  if (gi) gi.value = '';
+  frSaveRig();
+  frRenderDesk();
+}
+function frSetCustomRig() {
+  const ci = document.getElementById('frRigCustom');
+  const gi = document.getElementById('frRigGpus');
+  const v = ci ? parseFloat(ci.value) : NaN;
+  const n = gi ? parseInt(gi.value, 10) : NaN;
+  if (!(v > 0)) return;
+  const gpus = (n > 0 && n <= 16) ? n : 1;
+  window._frRig = { id: 'custom', name: `Custom ${v}GB${gpus > 1 ? ` ×${gpus}` : ''}`, usable: Math.round(v * 0.9), note: `Usable ≈90% of total VRAM. Speed assumes ~4090-class bandwidth/GPU.`, bw: 900, n: gpus };
+  frSaveRig();
+  frRenderDesk();
+}
+function frInitRig() { frGetRig(); frRenderDesk(); }
+function frDeskHtml() {
+  const d = window._frData || {};
+  const dl = d.desktop_leader || {};
+  return `<div class="tl-card"><h3>🖥️ Home crown — desktop models under 240B <span class="tl-daydot" title="Nudged live by graph buzz"></span></h3>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;">${(d.desktops || []).length} open models that fit a home rig · score = capability − 6/extra-GPU − 3 custom-license + 2 tiny-MoE bonus, nudged live by buzz.</div>
+    <div class="tl-toolbar" id="frEnergyBar" role="group" aria-label="Energy tariff">${frEnergyBarHtml()}</div>
+    <div class="fr-lead attn" style="border-left-color:var(--green);">
+      <div class="fr-crown">👑</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;">${esc(dl.model || '')} <span style="color:var(--text2);font-weight:400;">· ${esc(dl.vendor || '')} ${esc(dl.flag || '')}</span> <span class="fr-badge fr-ws">home ${dl.live_home}</span></div>
+        <div style="font-size:11.5px;color:var(--text2);">${esc(dl.blurb || '')}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px;">${dl.params_b}B ${esc(dl.arch || '')} · ~${dl.disk_q4_gb} GB disk · 🎮 ${esc(dl.home_gpus || '')}</div>
+      </div>
+    </div>
+    <div class="tl-toolbar" id="frRigChips" role="group" aria-label="Your rig">${(d.rigs || []).map(r => `<span class="tl-chip" data-rig="${r.id}" onclick="frSetRig('${r.id}')" role="button" tabindex="0" title="${esc(r.gpus || '')} · ~${r.bw_gbs}GB/s${r.gpu_count > 1 ? ' per GPU' : ''} · ${esc(r.note || '')}">${esc(r.name)}</span>`).join('')}<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);">custom <input id="frRigCustom" type="number" min="4" max="4000" placeholder="VRAM GB" style="width:92px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;" onchange="frSetCustomRig()" /><input id="frRigGpus" type="number" min="1" max="16" placeholder="GPUs" title="GPU count (for multi-GPU bandwidth)" style="width:64px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;" onchange="frSetCustomRig()" /> <button class="tl-chip" onclick="frSetCustomRig()">apply</button></span></div>
+    <div id="frRigNote" style="font-size:11.5px;color:var(--text2);margin-bottom:8px;"></div>
+    <div class="fr-tablewrap"><table class="fr-table"><tr><th>#</th><th>Fit + speed</th><th>Model</th><th>Params</th><th>Type</th><th>License</th><th>Disk</th><th>Home GPU</th><th>Avg use: query + agentic</th><th>Buzz</th><th>Score</th></tr><tbody id="frDeskBody">${frDeskRows()}</tbody></table></div>
+    <div style="font-size:11px;color:var(--text2);margin-top:6px;">Regular query ≈ 1 h active/day · agentic ≈ 4 h/day sustained. Active draw ≈ 320W/card + 150W host; idle rig (~60–120W left loaded) not counted — shut it down or sleep it.</div></div>`;
+}
+function setFrSub(s) {
+  window._frSub = s;
+  document.querySelectorAll('#frontierView .tl-subbar button').forEach(b => b.classList.toggle('active', b.dataset.fsub === s));
+  const r = document.getElementById('frPaneRace'), k = document.getElementById('frPaneDesk');
+  if (r) r.style.display = s === 'desk' ? 'none' : '';
+  if (k) k.style.display = s === 'desk' ? '' : 'none';
+}
+function renderFrontier(d) {
+  const el = document.getElementById('frontierView');
+  window._frData = d;
+  window._frTask = window._frTask || 'chat';
+  window._frSort = window._frSort || { key: 'crown_score', dir: -1 };
+  window._frSub = window._frSub || 'race';
+  const s = d.summary || {};
+  const labs = d.labs || [];
+  const lead = d.leader || labs[0] || {};
+  const hl = d.harness_leader || {};
+  const fr = d.freshness || {};
+  const hero =
+    `<div class="tl-card"><h3><i class="fas fa-trophy" style="color:var(--orange);"></i> Frontier Race — who crowns AGI / ASI first?
+      <button class="btn btn-sm" style="float:right;" onclick="frontierLoaded=true;loadFrontier();"><i class="fas fa-rotate"></i> Refresh</button></h3>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;"><span class="tl-daydot"></span><strong style="color:var(--green);">LIVE</strong> · ${labs.length} labs · ${(d.harnesses || []).length} harnesses · buzz + crowns recomputed from ${fr.total_projections || 0} projections on every load${fr.last_ingest ? ` · ingested ${esc((fr.last_ingest || '').slice(0, 16).replace('T', ' '))}` : ''}. Base specs Oct 2026 snapshot.</div>
+      <div class="fr-grid">
+        <div class="tl-stat"><div class="v">👑 ${esc(lead.organization || '—')}</div><div class="l">current crown · ${esc(lead.flagship_model || '')} (${lead.crown_score || '—'})</div></div>
+        <div class="tl-stat"><div class="v">${s.median_lab_agi || '—'}</div><div class="l">median lab AGI target (${s.earliest_lab_agi || '?'}–${s.latest_lab_agi || '?'})</div></div>
+        <div class="tl-stat"><div class="v">${s.median_lab_asi || '—'}</div><div class="l">median lab ASI target</div></div>
+        <div class="tl-stat"><div class="v">${s.graph_median_agi != null ? Math.round(s.graph_median_agi) : '—'}</div><div class="l">graph median AGI (${s.graph_forecast_count || 0} forecasts)</div></div>
+        <div class="tl-stat"><div class="v">${s.open_count || 0} open</div><div class="l">${s.closed_count || 0} closed · ${s.country_count || 0} jurisdictions</div></div>
+        <div class="tl-stat"><div class="v">🎮 ${s.local_run_count || 0} runnable</div><div class="l">${s.api_only_count || 0} API-only · GPU-to-run below</div></div>
+        <div class="tl-stat"><div class="v">🔧 ${esc(hl.tool || '—')}</div><div class="l">live harness crown · ${hl.live_adoption} <span class="tl-daydot"></span></div></div>
+        <div class="tl-stat"><div class="v">🖥️ ${esc((d.desktop_leader || {}).model || '—')}</div><div class="l">home crown &lt;240B · ${esc((d.desktop_leader || {}).home_gpus || '')}</div></div>
+      </div>
+      <div class="fr-lead attn" style="border-left-color:var(--orange);">
+        <div class="fr-crown"><i class="fas fa-crown"></i></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;">${esc(lead.organization || '')} ${esc(lead.flag || '')} — ${esc(lead.flagship_model || '')}</div>
+          <div style="font-size:11.5px;color:var(--text2);">${esc(lead.stance || '')}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">${esc(lead.size_params || '')} · ${esc(lead.compute || '')} · AGI ${esc(lead.agi_target || '')} → ASI ${esc(lead.asi_target || '')}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">🎮 To run: <strong>${esc(lead.run_gpus || '—')}</strong> · VRAM ${esc(lead.run_vram || '—')}</div>
+        </div>
+      </div>
+    </div>`;
+  const cards = labs.map((l, i) =>
+    `<div class="attn disc-rise" style="animation-delay:${Math.min(i, 10) * 60}ms;border-left-color:${i === 0 ? 'var(--orange)' : 'var(--accent)'};">
+      <div style="font-size:16px;width:26px;text-align:center;flex-shrink:0;">${i === 0 ? '👑' : (i + 1)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:600;">${esc(l.organization)} ${esc(l.flag || '')} <span style="color:var(--text2);font-weight:400;">· ${esc(l.country || '')}</span> <span class="fr-badge ${frLicClass(l.license_type)}">${frLicLabel(l.license_type)}</span> <span class="fr-badge ${frRunClass(l.run_tier)}">${frRunLabel(l.run_tier)}</span></div>
+        <div style="font-size:11.5px;"><strong>${esc(l.flagship_model || '')}</strong> <span style="color:var(--text2)">· ${esc(l.size_params || '')}</span></div>
+        <div style="font-size:11px;color:var(--text2);">${esc(l.license || '')} · ${esc(l.org_size || '')}</div>
+        <div style="font-size:11px;color:var(--text2);">🎮 To run: <strong>${esc(l.run_gpus || '—')}</strong> · VRAM ${esc(l.run_vram || '—')} · ⚡ chat ${esc(frChatPower(l))}</div>
+        <div class="fr-racebar"><div style="width:${l.crown_score || 0}%"></div></div>
+        <div style="font-size:11px;color:var(--text2);">crown score <strong>${l.crown_score}</strong> · AGI <strong>${esc(l.agi_target || '')}</strong> (conf ${l.agi_confidence}) → ASI <strong>${esc(l.asi_target || '')}</strong> · buzz ${frBuzzBadge(l.buzz)}</div>
+      </div>
+    </div>`).join('');
+  const harnessCard =
+    `<div class="tl-card"><h3>🔧 Harness crown — AI coding tools by live adoption <span class="tl-daydot" title="Re-ranked live on every load"></span></h3>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;">${(d.harnesses || []).length} harnesses · live score = base adoption + 90-day graph buzz (max 15) + sentiment (max 5). Press Fetch and the crown can change hands.</div>
+      <div class="fr-lead attn" style="border-left-color:var(--orange);">
+        <div class="fr-crown">👑</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;">${esc(hl.tool || '')} <span style="color:var(--text2);font-weight:400;">· ${esc(hl.vendor || '')} ${esc(hl.flag || '')}</span> <span class="fr-badge fr-ws">live ${hl.live_adoption}</span></div>
+          <div style="font-size:11.5px;color:var(--text2);">${esc(hl.adoption || '')}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">${esc(hl.harness_type || '')} · ${esc(hl.license || '')} · buzz ${frBuzzBadge({ mentions: hl.live_mentions, recent_90d: hl.live_recent, sentiment: hl.live_sentiment, momentum: hl.momentum })} · ${esc(hl.bench || '')}</div>
+        </div>
+      </div>
+      <div class="fr-tablewrap"><table class="fr-table"><tr><th>#</th><th>Tool / vendor</th><th>Type</th><th>License</th><th>Adoption signal</th><th>Live buzz</th><th>Live score</th></tr><tbody>${frHarnessRows()}</tbody></table></div></div>`;
+  const tl = (d.timeline || []).map(e =>
+    `<div class="fr-tlevent ${e.kind === 'agi' ? 'fr-agi' : e.kind === 'asi' ? 'fr-asi' : e.kind === 'now' ? 'fr-now' : 'fr-ms'}">
+      <div class="yr">${e.year}</div><div style="font-weight:700;">${esc(e.label)}</div><div style="color:var(--text2);">${esc(e.detail || '')}</div></div>`).join('');
+  const lo = (d.scale && d.scale.min_year) || 2017, hi = (d.scale && d.scale.max_year) || 2040;
+  const span = hi - lo;
+  const pct = y => Math.max(0, Math.min(100, ((y - lo) / span) * 100));
+  const nowP = pct(d.now_year || new Date().getUTCFullYear());
+  const mapRows = labs.map(l => {
+    const a0 = pct((d.now_year || 2026)), a1 = pct(l.agi_mid), b1 = pct(l.asi_mid);
+    return `<div class="fr-maprow"><div><strong>${esc(l.organization)}</strong><br/><span style="color:var(--text2);font-size:10.5px;">AGI ${esc(l.agi_target || '')} → ASI ${esc(l.asi_target || '')}</span></div>
+      <div class="fr-maptrack"><div class="fr-mapagi" style="left:${a0}%;width:${Math.max(1, a1 - a0)}%;"></div><div class="fr-mapasi" style="left:${a1}%;width:${Math.max(1, b1 - a1)}%;"></div>
+      ${s.graph_median_agi != null ? `<div class="fr-mapdot" style="left:${pct(s.graph_median_agi)}%;" title="Graph median AGI ${Math.round(s.graph_median_agi)}"></div>` : ''}</div>
+      <div style="color:var(--text2);font-size:11px;">${l.agi_mid} → ${l.asi_mid}<br/>conf ${l.agi_confidence}</div></div>`;
+  }).join('');
+  const phases = (d.roadmap || []).map(p =>
+    `<div class="attn" style="border-left-color:${p.label === 'agi' ? 'var(--purple)' : p.label === 'asi' ? 'var(--teal)' : p.label === 'now' ? 'var(--green)' : 'var(--text2)'};">
+      <div style="flex:1;"><div style="font-size:12px;font-weight:700;">${esc(p.phase)} <span style="color:var(--text2);font-weight:400;">· ${esc(p.span)}</span></div>
+      <div style="font-size:11.5px;color:var(--text2);">${esc(p.detail || '')}</div></div></div>`).join('');
+  el.innerHTML = `<div class="tl-wrap">` +
+    `<div class="tl-subbar" role="group" aria-label="Frontier views"><button data-fsub="race" class="${(window._frSub || 'race') === 'race' ? 'active' : ''}" onclick="setFrSub('race')">🏁 Frontier race</button><button data-fsub="desk" class="${window._frSub === 'desk' ? 'active' : ''}" onclick="setFrSub('desk')">🖥️ Home desktop &lt;240B</button></div>` +
+    `<div id="frPaneRace" style="display:${(window._frSub || 'race') === 'desk' ? 'none' : ''};">` + hero +
+    `<div class="tl-card"><h3><i class="fas fa-flag-checkered"></i> Leaderboard — race to crown</h3>${cards}</div>` +
+    `<div class="tl-card"><h3><i class="fas fa-table"></i> Contenders — sortable specs</h3>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px;">Click a header to sort — disk size, params, type, license, GPU tier, live buzz, crown. “—” = undisclosed (sorts last).</div>
+      <div class="fr-tablewrap"><table class="fr-table"><thead id="frContHead"></thead><tbody id="frContBody"></tbody></table></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:6px;">${esc(d.caveats || '')}</div></div>` +
+    harnessCard +
+    `<div class="tl-card"><h3><i class="fas fa-bolt" style="color:var(--orange);"></i> GPU + power by task</h3>
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;">Same model, very different bill — pick a workload. Local labs show your-side GPUs/VRAM/draw; API-only rows show the provider's replica cost behind your API call.</div>
+      <div class="tl-toolbar" id="frTaskChips" role="group" aria-label="Workload">${(d.run_task_defs || []).map(t => `<span class="tl-chip${(window._frTask || 'chat') === t.id ? ' on' : ''}" data-task="${t.id}" onclick="frSetTask('${t.id}')" role="button" tabindex="0">${esc(t.name)}</span>`).join('')}</div>
+      <div id="frTaskDesc" style="font-size:11.5px;color:var(--text2);margin-bottom:8px;"></div>
+      <div class="fr-tablewrap"><table class="fr-table"><tr><th>Lab / model</th><th>GPUs for this task</th><th>VRAM</th><th>Power</th><th>Notes</th></tr><tbody id="frTaskBody"></tbody></table></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:6px;">Power model: H100 SXM 700W each + 500W host per ≤8-GPU node, shown as draw + kWh/day at full tilt. Real idle/mixed use runs lower; long context adds KV-cache GPUs before it adds tokens.</div></div>` +
+    `<div class="tl-card"><h3><i class="fas fa-route"></i> Race timeline — milestones to AGI → ASI</h3><div class="fr-tl">${tl}</div>
+      <div class="tl-legend"><span><i class="fas fa-square" style="color:var(--text2)"></i> milestone</span><span><i class="fas fa-square" style="color:var(--green)"></i> now (${d.now_year})</span><span><i class="fas fa-square" style="color:var(--purple)"></i> AGI window</span><span><i class="fas fa-square" style="color:var(--teal)"></i> ASI horizon</span></div></div>` +
+    `<div class="tl-card"><h3><i class="fas fa-chart-line"></i> Projection map — each lab's road to AGI → ASI</h3>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">Purple = today → lab AGI target · teal = AGI → ASI · <span style="color:var(--orange);">orange tick</span> = live graph median AGI (${s.graph_median_agi != null ? Math.round(s.graph_median_agi) : '—'}). Scale ${lo}–${hi}.</div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2);"><span>${lo}</span><span style="color:var(--green);">▲ now (${d.now_year})</span><span>${hi}</span></div>
+      ${mapRows}</div>` +
+    `<div class="tl-card"><h3><i class="fas fa-layer-group"></i> Phases — what “crowning” means</h3>${phases}
+      <div style="font-size:11px;color:var(--text2);margin-top:8px;">${esc(d.method || '')}</div></div>` + `</div>` +
+    `<div id="frPaneDesk" style="display:${window._frSub === 'desk' ? '' : 'none'};">${frDeskHtml()}</div>` + `</div>`;
+  if (window.tlAnimateBars) tlAnimateBars();
+  frRenderCont();
+  frSetTask(window._frTask || 'chat');
+  frInitRig();
+  frInitEnergy();
+  frRenderDesk();
 }
 
 let timelineLoaded = false;

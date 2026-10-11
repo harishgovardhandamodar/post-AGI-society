@@ -38,6 +38,13 @@ KNOWN_KEYWORDS = [
     "retaliation", "non-disparagement", "superalignment team",
     "existential risk", "uncontrollable", "deceptive alignment",
     "copyright fair use", "AGI readiness", "frontier lab",
+    # Frontier race: labs, flagships, harnesses (feeds the Frontier Race tab's live buzz)
+    "GPT-5", "GPT-6", "Claude Opus", "Claude Sonnet", "Gemini 3", "Gemini 4", "Grok 4", "Llama 4",
+    "DeepSeek", "DeepSeek V4", "Qwen3", "Qwen3.8", "Kimi K2", "Kimi K3", "Mistral Large", "GLM-4", "GLM-5", "Hunyuan", "Hy4", "Ernie", "Command A", "Nemotron",    "Ernie 5", "Command R", "superintelligence lab", "SWE-bench",
+    "Claude Code", "GitHub Copilot", "Cursor IDE", "Cursor editor",
+    "Codex CLI", "OpenAI Codex", "Windsurf", "Cline AI", "Devin AI",
+    "Aider", "Code Assist", "Tongyi Lingma", "coding agent",
+    "Muse Spark", "Muse Glimmer",
 ]
 
 WHISTLEBLOWER_KEYWORDS = [

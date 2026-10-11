@@ -4,6 +4,29 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 
 ---
 
+## What's new — Frontier Race tab (October 2026)
+
+The 6th tab tracks the race to crown AGI/ASI across **15 frontier labs (incl. NVIDIA)** — and unlike the static snapshot tables elsewhere, it is **live**: buzz, momentum, and both crowns recompute from the knowledge graph on every load, so each Fetch/ingestion run can move the board.
+
+- **Crown leaderboard** — GPT-6 Astra, Claude Opus 5.5, Gemini 4 Argon, Grok 4.7, DeepSeek V4-Pro, Muse Spark 1.2, Qwen3.8-Max, Kimi K3, Nemotron 3 Ultra… with org, country, size, flagship, and license.
+- **Sortable contenders table** — click any header: weight-file size on disk, params (total · active), MoE/dense type, license, GPU tier, live buzz, crown. `—` = undisclosed.
+- **GPU + power by task** — per-model VRAM, GPU counts, and draw/kWh-day for chat (8k), agentic coding (32k+tools), long-context (128k RAG), and 64-concurrent serving. API-only rows show provider-side replica cost.
+- **🔧 Harness crown (live)** — 10 AI coding tools ranked by live adoption (base + 90-day graph buzz + sentiment). Currently Claude Code; press Fetch and the crown can change hands.
+- **🖥️ Home desktop subtab (<240B)** — 14 open models with a **rig configurator** (DGX Spark 128GB, 2× RTX 5080, 1×/2× 4090, Mac Studio, custom VRAM): ✅/⚠️/❌ fit badges, **est. tok/s on your rig**, and query-vs-agentic energy cost in **your country/currency** (10 tariffs + custom rate).
+- **AGI→ASI projection map** — every lab's stated/inferred AGI→ASI window against the live graph median.
+
+| Frontier Race board | Harness crown (live adoption) |
+|---|---|
+| ![Frontier Race tab — crown leaderboard across 15 labs](docs/screenshots/06-frontier.png) | ![Harness crown — AI coding tools ranked by live adoption](docs/screenshots/07-harness.png) |
+| *Live crowns, median lab AGI/ASI targets vs the graph median, leaderboard.* | *Base adoption + 90-day graph buzz + sentiment, re-ranked on every load.* |
+
+| GPU + power by task | Home desktop configurator (<240B) |
+|---|---|
+| ![GPU and power by workload — VRAM, GPUs, draw](docs/screenshots/08-gpupower.png) | ![Home desktop subtab — rig fit, tok/s, energy cost in your currency](docs/screenshots/09-desktop.png) |
+| *Chat / agentic / long-context / serving switcher; provider-side costs for API-only models.* | *Rig picker with fit badges, est. tok/s, query-vs-agentic cost in €/$/£/¥/₹.* |
+
+---
+
 ## Showcase
 
 | Discoveries (landing view) | Knowledge graph |
@@ -32,6 +55,7 @@ A knowledge graph dashboard that curates, analyzes, and visualizes the intellect
 | **Knowledge graph** | vis-network zoom/pan/physics · type colors + glow · sentiment/confidence sizing · type filters + full-text search · similarity rings · diarized-concept cards for interviews & testimonies |
 | **Plausibility** | Animated overall ring · per-type cards (confidence bars, sentiment, evidence lists) · year-range + source-year filters · trend endpoint · **Classical/Agentic toggle** (agent deliberation with rationale, disagreement meters, reliability grades, A2A trace) |
 | **Timeline to AGI** | Live median forecast year + spread · 5-year-bucket chart · horizon bands (achieved/near/mid/far) · 5 open bridge gaps with evidence counts · auto-refreshes with ingestion |
+| **Frontier Race** | 15 frontier labs racing to crown AGI/ASI (incl. NVIDIA) · org, country, size, flagship, license · **sortable** contenders (disk, params, MoE/dense, license, GPU tier, buzz, crown) · GPU + power by task (chat/agent/128k/serving) · **live 🔧 harness crown** (10 coding tools, base + 90-day buzz + sentiment) · **🖥️ home desktop subtab <240B** with rig configurator (DGX Spark, 2× 5080, 4090s, Mac, custom), fit badges, est. tok/s, energy cost by country/currency · AGI→ASI projection map vs live graph median · `GET /api/frontier-race` |
 | **AI Security workbench** | 12-threat STRIDE + OWASP LLM catalog · normalized 0–100 scoring with drivers/breakdown · severity filter chips + L/I labels · coverage vs OWASP 2025 / ATLAS / NIST RMF / LINDDUN · what-if lab · Monte Carlo · kill-chains · red-team harness · hypotheses · peer review + Cohen's κ · versioning · ZIP/CSV/BibTeX exports |
 | **Ingestion** | RSS + Nitter + arXiv auto-pipeline (daily 04:00 UTC + Fetch button) · relevance filter · regex sentiment · tag extraction · projection detection · whistleblower-testimony detection · auto-relationships (capped) |
 | **Curation** | Manual Add (all 9 types incl. diarized testimony) · typed Relate edges · re-seed from 71 curated artifacts + 96 relationships |
@@ -471,6 +495,7 @@ Represents the aggregate credibility-weighted outlook across all collected proje
 | GET | `/api/timeline/professions` | Profession capture statuses + future workforce projections (live scores) |
 | GET | `/api/timeline/human-edge` | Human-edge resilience per area + watch signals (live scores) |
 | GET | `/api/timeline/safety` | Cross-collection safety dimension: by-type corpus, sentiment gap, top projections |
+| GET | `/api/frontier-race` | Frontier-lab race (live buzz + crowns): specs, sortable params/disk, run GPUs + per-task power, harness crown, <240B desktops, rigs, energy tariffs |
 | POST | `/api/relationships` | Create relationship |
 | POST | `/api/ingest/run` | Trigger scraper (runs in background) |
 | GET | `/api/ingest/status` | Last run, items fetched, total runs |

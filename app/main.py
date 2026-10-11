@@ -1414,6 +1414,778 @@ def _timeline_histogram(mids: list[float]) -> list[dict]:
     return buckets
 
 
+# ------------------------------------------------------ frontier race ---
+# 6th tab: who is racing to crown the first AGI/ASI system. Curated snapshot
+# (public info, Oct 2026 — sizes of closed labs are estimates) enriched live
+# with the graph's own median AGI year so the lab race can be read against
+# community forecasts on every call.
+FRONTIER_LABS = [
+    {"id": "openai", "organization": "OpenAI", "country": "USA", "flag": "🇺🇸",
+     "flagship_model": "GPT-6 Astra", "model_family": "GPT-6 (Astra/Sol/Luna, computer-use)",
+     "size_params": "Undisclosed (~1–2T MoE class, rumored)", "size_class": "XL",
+     "org_size": "~3,000 staff · ~$20B+ raised", "compute": "Stargate + Azure (>500k H100 equiv.)",
+     "license": "Proprietary — API + ChatGPT, no weights", "license_type": "proprietary",
+     "crown_score": 96, "agi_target": "2028", "agi_mid": 2028, "asi_target": "2032–35", "asi_mid": 2033,
+     "agi_confidence": 0.85, "stance": "Altman: 'taste of AGI' via computer-use agents; superintelligence this decade.",
+     "last_milestone": "GPT-6 Astra + Sol/Luna computer-use agents (Sep 2026)"},
+    {"id": "anthropic", "organization": "Anthropic", "country": "USA", "flag": "🇺🇸",
+     "flagship_model": "Claude Opus 5.5", "model_family": "Claude 5 (constitutional, agentic)",
+     "size_params": "Undisclosed (dense/MoE, frontier class)", "size_class": "XL",
+     "org_size": "~1,500 staff · ~$18B raised", "compute": "AWS + Google TPU (Project Rainier)",
+     "license": "Proprietary — API + Claude apps, no weights", "license_type": "proprietary",
+     "crown_score": 94, "agi_target": "2027–28", "agi_mid": 2028, "asi_target": "2031–34", "asi_mid": 2032,
+     "agi_confidence": 0.88, "stance": "Amodei: 'powerful AI' 2026–27; responsible-scaling + ASL tiers.",
+     "last_milestone": "Opus 5.5 + Sonnet 5.5 coding crowns (Sep 2026)"},
+    {"id": "deepmind", "organization": "Google DeepMind", "country": "UK / USA", "flag": "🇬🇧",
+     "flagship_model": "Gemini 4 Argon", "model_family": "Gemini 4 (multimodal MoE)",
+     "size_params": "Undisclosed (frontier MoE)", "size_class": "XL",
+     "org_size": "~2,000+ research staff · Alphabet", "compute": "TPU v6 Trillium pods (in-house)",
+     "license": "Proprietary — Vertex AI + AI Studio API", "license_type": "proprietary",
+     "crown_score": 93, "agi_target": "2029–30", "agi_mid": 2030, "asi_target": "2033–36", "asi_mid": 2034,
+     "agi_confidence": 0.8, "stance": "Hassabis: AGI ~2030 with scientific discovery as the test; AlphaFold lineage.",
+     "last_milestone": "Gemini 4 Argon frontier rollout + 3.8 Flash (2026)"},
+    {"id": "nvidia", "organization": "NVIDIA", "country": "USA", "flag": "🇺🇸",
+     "flagship_model": "Nemotron 3 Ultra", "model_family": "Nemotron 3 MoE (agentic)",
+     "size_params": "550B MoE (open) · Nano 30B + Lightning single-GPU", "size_class": "L",
+     "org_size": "Big Tech · GPU maker", "compute": "In-house DGX Cloud",
+     "license": "Open — NVIDIA Open Model License", "license_type": "open-weights",
+     "crown_score": 83, "agi_target": "2031+", "agi_mid": 2031, "asi_target": "2036+", "asi_mid": 2037,
+     "agi_confidence": 0.5, "stance": "Full-stack play: open agentic models pull GPU demand; Nemotron 4 1T in dev.",
+     "last_milestone": "Nemotron 3 Ultra 550B + Nano 30B open (2026)"},
+    {"id": "xai", "organization": "xAI", "country": "USA", "flag": "🇺🇸",
+     "flagship_model": "Grok 4.7", "model_family": "Grok 4 (Colossus-trained)",
+     "size_params": "Undisclosed (200k+ H100 cluster class)", "size_class": "XL",
+     "org_size": "~500 staff · ~$12B raised", "compute": "Colossus 1–2 (200k+ H100s)",
+     "license": "Proprietary API (Grok-1 weights Apache-2.0 legacy)", "license_type": "proprietary",
+     "crown_score": 88, "agi_target": "2027", "agi_mid": 2027, "asi_target": "2030–33", "asi_mid": 2031,
+     "agi_confidence": 0.9, "stance": "Musk: AGI imminent; fastest-compute strategy; 'maximum truth-seeking'.",
+     "last_milestone": "Grok 4.7 coding crown + Copilot integration (Sep 2026)"},
+    {"id": "meta", "organization": "Meta", "country": "USA", "flag": "🇺🇸",
+     "flagship_model": "Muse Spark 1.2", "model_family": "Muse (MSL frontier) · Llama open lineage",
+     "size_params": "Undisclosed (frontier class; Llama 4 Maverick 400B/17B still open)", "size_class": "XL",
+     "org_size": "MSL + 1,000+ researchers · Big Tech", "compute": "2× 24k-H100 clusters + MSL build-out",
+     "license": "Open weights pledged for Spark 1.2 (pending drop) · Llama Community live", "license_type": "hybrid",
+     "crown_score": 86, "agi_target": "2030–32", "agi_mid": 2031, "asi_target": "2035+", "asi_mid": 2036,
+     "agi_confidence": 0.62, "stance": "MSL bets on personal superintelligence; open-weights pledge as US-leadership play.",
+     "last_milestone": "Muse Spark 1.2 + Glimmer 30B open drop (Aug 2026)"},
+    {"id": "deepseek", "organization": "DeepSeek", "country": "China", "flag": "🇨🇳",
+     "flagship_model": "DeepSeek V4-Pro", "model_family": "DeepSeek V4 MoE (1M ctx)",
+     "size_params": "1.6T total / 49B active (MoE) · 1M ctx", "size_class": "XL",
+     "org_size": "~200 staff · High-Flyer backed", "compute": "~50k Hopper-class (export-constrained)",
+     "license": "Open weights — MIT", "license_type": "open-weights",
+     "crown_score": 88, "agi_target": "2028–29", "agi_mid": 2029, "asi_target": "2032–35", "asi_mid": 2033,
+     "agi_confidence": 0.78, "stance": "Efficiency-first open lab; V4-Pro 2nd among open weights.",
+     "last_milestone": "V4-Pro/Flash + Vision open drops (2026)"},
+    {"id": "qwen", "organization": "Alibaba Qwen", "country": "China", "flag": "🇨🇳",
+     "flagship_model": "Qwen3.8-Max", "model_family": "Qwen3.8 MoE (262K ctx)",
+     "size_params": "2.4T total / 95B active (MoE)", "size_class": "XL",
+     "org_size": "Alibaba DAMO + Tongyi Lab", "compute": "Alibaba Cloud hyperscale",
+     "license": "Open weights w/ commercial restrictions (custom)", "license_type": "hybrid",
+     "crown_score": 86, "agi_target": "2029", "agi_mid": 2029, "asi_target": "2033–36", "asi_mid": 2034,
+     "agi_confidence": 0.72, "stance": "Max-class goes open (with commercial strings); Qwen4 commercial next.",
+     "last_milestone": "3.8-Max + 27B open drops (Aug 2026)"},
+    {"id": "moonshot", "organization": "Moonshot AI", "country": "China", "flag": "🇨🇳",
+     "flagship_model": "Kimi K3", "model_family": "Kimi K3 MoE (native vision, 1M ctx)",
+     "size_params": "2.8T total (aggressive MoE) · 1M ctx", "size_class": "XL",
+     "org_size": "Startup · ~$1B+ raised", "compute": "Domestic + leased hyperscale",
+     "license": "Open weights — Modified MIT", "license_type": "open-weights",
+     "crown_score": 85, "agi_target": "2029–30", "agi_mid": 2030, "asi_target": "2034+", "asi_mid": 2035,
+     "agi_confidence": 0.68, "stance": "World's largest open-weights drop; agent-first lab.",
+     "last_milestone": "Kimi K3 2.8T open release (Jul 2026)"},
+    {"id": "zhipu", "organization": "Zhipu AI (GLM)", "country": "China", "flag": "🇨🇳",
+     "flagship_model": "GLM-5.2", "model_family": "GLM-5 MoE (agentic engineering)",
+     "size_params": "744B MoE class", "size_class": "L",
+     "org_size": "~1,000 staff · state-backed", "compute": "Domestic clusters",
+     "license": "Dual — open GLM-4 weights + proprietary API", "license_type": "hybrid",
+     "crown_score": 80, "agi_target": "2030", "agi_mid": 2030, "asi_target": "2035+", "asi_mid": 2036,
+     "agi_confidence": 0.62, "stance": "HKEX-listed; vendor-claim near-Opus coding.",
+     "last_milestone": "GLM-5/5.2 open + HKEX listing (2026)"},
+    {"id": "tencent", "organization": "Tencent Hunyuan", "country": "China", "flag": "🇨🇳",
+     "flagship_model": "Hunyuan Hy4 Preview", "model_family": "Hunyuan Hy MoE (multimodal)",
+     "size_params": "Undisclosed (Hy3: 295B/21B MoE)", "size_class": "M",
+     "org_size": "Big Tech division", "compute": "Tencent Cloud hyperscale",
+     "license": "Hy4-Preview reportedly open · Cloud API", "license_type": "hybrid",
+     "crown_score": 74, "agi_target": "2030–32", "agi_mid": 2031, "asi_target": "2035+", "asi_mid": 2036,
+     "agi_confidence": 0.55, "stance": "Ecosystem play: WeChat + cloud distribution over raw frontier.",
+     "last_milestone": "Hy4 Preview (Aug 2026); Hy3 295B open"},
+    {"id": "baidu", "organization": "Baidu", "country": "China", "flag": "🇨🇳",
+     "flagship_model": "Ernie 5.1", "model_family": "Ernie 5 (efficient multimodal)",
+     "size_params": "Undisclosed", "size_class": "M",
+     "org_size": "Big Tech division", "compute": "Baidu AI Cloud",
+     "license": "Proprietary — Qianfan API", "license_type": "proprietary",
+     "crown_score": 70, "agi_target": "2031+", "agi_mid": 2032, "asi_target": "2036+", "asi_mid": 2037,
+     "agi_confidence": 0.52, "stance": "Efficiency play: flagship at 6% pretrain cost; conservative dates.",
+     "last_milestone": "Ernie 5.1 top-5 leaderboard (May 2026)"},
+    {"id": "mistral", "organization": "Mistral AI", "country": "France", "flag": "🇫🇷",
+     "flagship_model": "Mistral Large 4", "model_family": "Large (granular MoE, natively multimodal)",
+     "size_params": "~1.05T total / ~52B active (MoE) + 1.6B vision encoder · 1M-token context", "size_class": "L",
+     "org_size": "~150 staff · ~$2B raised", "compute": "European HPC + partners",
+     "license": "Open weights — MNPL (Large) / API preview on Mistral Studio", "license_type": "open-weights",
+     "crown_score": 80, "agi_target": "2031+", "agi_mid": 2031, "asi_target": "2036+", "asi_mid": 2037,
+     "agi_confidence": 0.55, "stance": "EU sovereignty champion; Large 4 granular-MoE bet at 1T scale, natively multimodal.",
+     "last_milestone": "Large 4 1T-MoE open-weight drop, 1M context (2026)"},
+    {"id": "cohere", "organization": "Cohere", "country": "Canada", "flag": "🇨🇦",
+     "flagship_model": "Command A+", "model_family": "Command A+ MoE (enterprise)",
+     "size_params": "218B total / 25B active (MoE)", "size_class": "M",
+     "org_size": "~400 staff · ~$1B raised", "compute": "Oracle + CoreWeave partnerships",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "crown_score": 70, "agi_target": "2032+", "agi_mid": 2033, "asi_target": "2038+", "asi_mid": 2038,
+     "agi_confidence": 0.45, "stance": "Enterprise language AI; no AGI claim — productivity moat.",
+     "last_milestone": "Command A+ MoE open under Apache-2.0 (May 2026)"},
+    {"id": "ssi", "organization": "Safe Superintelligence (SSI)", "country": "USA / Israel", "flag": "🇺🇸",
+     "flagship_model": "SSI-1 (stealth)", "model_family": "Undisclosed (superintelligence-direct)",
+     "size_params": "Undisclosed (stealth)", "size_class": "XL?",
+     "org_size": "Small elite team · NVIDIA $5B strategic partner", "compute": "Undisclosed (NVIDIA-partnered)",
+     "license": "Proprietary — stealth, no release yet", "license_type": "proprietary",
+     "crown_score": 79, "agi_target": "2028–30", "agi_mid": 2029, "asi_target": "2030–33 (direct)", "asi_mid": 2031,
+     "agi_confidence": 0.75, "stance": "NVIDIA-backed straight-shot SSI; first model reportedly due 2026.",
+     "last_milestone": "NVIDIA $5B partnership (Jul 2026)"},
+]
+
+FRONTIER_TIMELINE = [
+    {"year": 2017, "label": "Transformer", "kind": "milestone", "detail": "Vaswani et al. — the architecture every contender still scales."},
+    {"year": 2020, "label": "GPT-3 · scaling laws", "kind": "milestone", "detail": "175B few-shot + Kaplan/McCandlish scaling curves launch the race."},
+    {"year": 2022, "label": "ChatGPT moment", "kind": "milestone", "detail": "OpenAI turns LLMs into a consumer crown; 100M users in 2 months."},
+    {"year": 2023, "label": "GPT-4 · Claude · Llama", "kind": "milestone", "detail": "Three-pole race forms: closed frontier (US) vs open weights (Meta)."},
+    {"year": 2024, "label": "Reasoning + video", "kind": "milestone", "detail": "o1 chain-of-thought, Sora, Claude 3.5 Sonnet coding lead."},
+    {"year": 2025, "label": "Agents + open shock", "kind": "milestone", "detail": "DeepSeek-R1/Qwen3/Kimi-K2 prove open weights race at 1/10th cost; GPT-5, Claude 4, Gemini 2.5 ship agents."},
+    {"year": 2026, "label": "Crown fight (now)", "kind": "now", "detail": "GPT-5.2 vs Opus 4.5 vs Gemini 3 vs Grok 4.1 — coding/agent benchmarks trade the lead monthly."},
+    {"year": 2028, "label": "AGI window (short camp)", "kind": "agi", "detail": "Musk/Amodei/Altman targets cluster 2027–29: autonomous R&D + full job-task automation."},
+    {"year": 2030, "label": "AGI window (consensus)", "kind": "agi", "detail": "Median lab target ~2029–30; Hassabis/consensus view. Graph community median shown live below."},
+    {"year": 2033, "label": "Early ASI", "kind": "asi", "detail": "Median lab ASI target ~2033–34: self-improving systems, science acceleration."},
+    {"year": 2038, "label": "Full ASI horizon", "kind": "asi", "detail": "Long-tail lab targets 2036–38+: superintelligent fleets, governance test."},
+]
+
+FRONTIER_PHASES = [
+    {"phase": "Narrow → General copilots", "span": "2020–2025", "label": "done",
+     "detail": "Chat, code, multimodal assistants. Benchmarks saturated; agents emerge."},
+    {"phase": "Agentic frontier race", "span": "2025–2028", "label": "now",
+     "detail": "SWE/agentic crowns rotate monthly. Compute (Colossus, Stargate, TPU pods) is the moat; open weights close the gap."},
+    {"phase": "AGI contention", "span": "2027–2031", "label": "agi",
+     "detail": "Lab medians point here. Definition fight: autonomous researcher + economic-task generality, not just chat."},
+    {"phase": "ASI transition", "span": "2031–2038+", "label": "asi",
+     "detail": "Self-improvement loops + science acceleration. Safety-culture and governance gaps decide whether it is steered."},
+]
+
+
+# GPU needed to RUN each flagship (inference, not training). Estimates for
+# full-weight serving at usable context (FP8/BF16) plus cheapest practical
+# quantized local run (Q4/HQQ/AWQ via vLLM/SGLang/Ollama). API-only labs have
+# no local path — weights are closed. Oct 2026 snapshot; quant tooling moves fast.
+FRONTIER_RUN_COMPUTE = {
+    "openai": {"run_tier": "api-only",
+               "run_gpus": "No local run — weights closed",
+               "run_vram": "n/a",
+               "run_note": "Datacenter replica est. 8× H100 80GB per shard; only via API/ChatGPT."},
+    "anthropic": {"run_tier": "api-only",
+                  "run_gpus": "No local run — weights closed",
+                  "run_vram": "n/a",
+                  "run_note": "AWS/TPU serving fleet; only via API/Claude apps."},
+    "deepmind": {"run_tier": "api-only",
+                 "run_gpus": "No local run — weights closed",
+                 "run_vram": "n/a",
+                 "run_note": "TPU-pod serving; only via Vertex AI / AI Studio."},
+    "xai": {"run_tier": "api-only",
+            "run_gpus": "No local run (flagship) — Grok-1 314B legacy weights need ~4× H100",
+            "run_vram": "n/a",
+            "run_note": "Grok 4.7 via API/X Premium; legacy Grok-1 open weights are not the frontier model."},
+    "meta": {"run_tier": "datacenter",
+             "run_gpus": "FP8 ~5–6× H100 80GB · Q4 ~3× H100 / ~9× RTX 4090 24GB",
+             "run_vram": "~200–400 GB",
+             "run_note": "Figures for Llama 4 Maverick (runnable open flagship); Muse Spark 1.2 weights pledged, pending drop."},
+    "deepseek": {"run_tier": "datacenter",
+                 "run_gpus": "FP8 ~1.6 TB → ~20× H100 80GB · Q4 ~800 GB → ~10× H100 / ~34× RTX 4090",
+                 "run_vram": "~800 GB–1.6 TB",
+                 "run_note": "V4-Pro 1.6T MoE (49B active); MLA + 1M ctx need headroom beyond weights."},
+    "qwen": {"run_tier": "workstation",
+             "run_gpus": "FP8 ~2.4 TB → ~30× H100 80GB · Q4 ~1.2 TB → ~15× H100 / ~50× RTX 4090",
+             "run_vram": "~1.2–2.4 TB",
+             "run_note": "3.8-Max 2.4T MoE (95B active); Max-class open weights need multi-node."},
+    "moonshot": {"run_tier": "datacenter",
+                 "run_gpus": "FP8 ~2.8 TB → ~36× H100 80GB · Q4 ~1.4 TB → ~18× H100 / ~60× RTX 4090",
+                 "run_vram": "~1.4–2.8 TB",
+                 "run_note": "Kimi K3 2.8T aggressive MoE; heaviest open run on the board — multi-node only."},
+    "zhipu": {"run_tier": "workstation",
+              "run_gpus": "FP8 ~744 GB → ~10× H100 80GB · Q4 ~370 GB → ~5× H100 / ~16× RTX 4090",
+              "run_vram": "~370–744 GB",
+              "run_note": "GLM-5 744B MoE class; agentic-engineering tuned."},
+    "tencent": {"run_tier": "datacenter",
+                "run_gpus": "Hy3 295B Q4 ~150 GB → ~2× H100 / ~7× RTX 4090 (Hy4 TBD)",
+                "run_vram": "~150 GB+",
+                "run_note": "Hy3 weights open on GitHub; Hy4-Preview reportedly open, sizing TBD."},
+    "baidu": {"run_tier": "api-only",
+              "run_gpus": "No local run — weights closed",
+              "run_vram": "n/a",
+              "run_note": "Ernie 5.1 via Qianfan API only (4.5 family weights are open)."},
+    "mistral": {"run_tier": "datacenter",
+                "run_gpus": "FP8 ~1 TB → ~13× H100 80GB · Q4 ~525 GB → ~7× H100 / ~22× RTX 4090",
+                "run_vram": "~525 GB–1 TB",
+                "run_note": "1.05T granular MoE (52B active): burns like a 50B dense per token, but full weights must fit in VRAM."},
+    "cohere": {"run_tier": "workstation",
+               "run_gpus": "FP8 ~436 GB → ~6× H100 80GB · Q4 ~110 GB → ~2× H100 / ~5× RTX 4090",
+               "run_vram": "~110–436 GB",
+               "run_note": "Command A+ 218B MoE (25B active), Apache-2.0; enterprise build."},
+    "nvidia": {"run_tier": "datacenter",
+               "run_gpus": "FP8 ~550 GB → ~7× H100 80GB · Q4 ~275 GB → ~4× H100 / ~12× RTX 4090",
+               "run_vram": "~275–550 GB",
+               "run_note": "Long-run-agent tuned; Nano 30B runs on 1 GPU (see desktop subtab)."},
+    "ssi": {"run_tier": "api-only",
+            "run_gpus": "Unknown — stealth, no weights released",
+            "run_vram": "n/a",
+            "run_note": "No public model to run yet; watch for release-license change."},
+}
+
+# Task shapes behind the per-model GPU + power table. Multipliers apply to the
+# numeric anchors below (Q4 single-user chat = 1×, full-precision fleet for
+# serving). Power model: H100 SXM 700W each + 500W host per ≤8-GPU node.
+RUN_TASK_DEFS = [
+    {"id": "chat", "name": "Chat · 8k ctx",
+     "desc": "Single-user assistant, short context, Q4 quantized — the cheapest way to run it."},
+    {"id": "agent", "name": "Agentic coding · 32k + tools",
+     "desc": "Sustained reasoning loop with tool calls; ~1.5× GPUs for KV cache + steady boost clocks."},
+    {"id": "longctx", "name": "Long-context · 128k RAG",
+     "desc": "Big KV cache dominates — ~2× GPUs/VRAM over chat."},
+    {"id": "serve", "name": "Serving · 64 concurrent",
+     "desc": "Throughput fleet: 4 full-precision replicas behind a router."},
+]
+
+# Numeric anchors per locally-runnable lab: Q4 chat GPU count, full-precision
+# replica size, Q4 VRAM GB, FP8 VRAM GB, RTX-4090 Q4 equivalent count.
+RUN_ANCHORS = {
+    "meta": {"q4_h100": 3, "fp8_h100": 6, "q4_gb": 200, "fp8_gb": 400, "r4090": 9},
+    "deepseek": {"q4_h100": 10, "fp8_h100": 20, "q4_gb": 800, "fp8_gb": 1600, "r4090": 34},
+    "qwen": {"q4_h100": 15, "fp8_h100": 30, "q4_gb": 1200, "fp8_gb": 2400, "r4090": 50},
+    "moonshot": {"q4_h100": 18, "fp8_h100": 36, "q4_gb": 1400, "fp8_gb": 2800, "r4090": 60},
+    "zhipu": {"q4_h100": 5, "fp8_h100": 10, "q4_gb": 370, "fp8_gb": 744, "r4090": 16},
+    "mistral": {"q4_h100": 7, "fp8_h100": 13, "q4_gb": 525, "fp8_gb": 1050, "r4090": 22},
+    "cohere": {"q4_h100": 2, "fp8_h100": 6, "q4_gb": 110, "fp8_gb": 436, "r4090": 5},
+    "tencent": {"q4_h100": 2, "fp8_h100": 8, "q4_gb": 150, "fp8_gb": 590, "r4090": 7},
+    "nvidia": {"q4_h100": 4, "fp8_h100": 7, "q4_gb": 275, "fp8_gb": 550, "r4090": 12},
+}
+
+API_REPLICA_H100 = 8  # est. GPUs per provider-side flagship replica
+
+
+# Sortable model specs: total/active params (B), architecture, weight-file size
+# on disk (GB, Q4 vs FP8/BF16). Null = undisclosed (sorts last, shows "—").
+# est=true marks press/analyst estimates, displayed with a "~".
+FRONTIER_MODEL_SPECS = {
+    "openai": {"params_total_b": None, "params_active_b": None, "params_est": False,
+               "arch": "undisclosed", "disk_q4_gb": None, "disk_fp8_gb": None},
+    "anthropic": {"params_total_b": None, "params_active_b": None, "params_est": False,
+                  "arch": "undisclosed", "disk_q4_gb": None, "disk_fp8_gb": None},
+    "deepmind": {"params_total_b": None, "params_active_b": None, "params_est": False,
+                 "arch": "undisclosed", "disk_q4_gb": None, "disk_fp8_gb": None},
+    "xai": {"params_total_b": None, "params_active_b": None, "params_est": False,
+            "arch": "undisclosed", "disk_q4_gb": None, "disk_fp8_gb": None},
+    "meta": {"params_total_b": 400, "params_active_b": 17, "params_est": False,
+             "arch": "moe", "disk_q4_gb": 200, "disk_fp8_gb": 400},
+    "deepseek": {"params_total_b": 1600, "params_active_b": 49, "params_est": False,
+                 "arch": "moe", "disk_q4_gb": 800, "disk_fp8_gb": 1600},
+    "qwen": {"params_total_b": 2400, "params_active_b": 95, "params_est": True,
+             "arch": "moe", "disk_q4_gb": 1200, "disk_fp8_gb": 2400},
+    "moonshot": {"params_total_b": 2800, "params_active_b": None, "params_est": True,
+                 "arch": "moe", "disk_q4_gb": 1400, "disk_fp8_gb": 2800},
+    "zhipu": {"params_total_b": 744, "params_active_b": None, "params_est": True,
+              "arch": "moe", "disk_q4_gb": 370, "disk_fp8_gb": 744, "disk_est": True},
+    "tencent": {"params_total_b": 295, "params_active_b": 21, "params_est": False,
+                "arch": "moe", "disk_q4_gb": 150, "disk_fp8_gb": 590, "disk_est": True},
+    "baidu": {"params_total_b": None, "params_active_b": None, "params_est": False,
+              "arch": "undisclosed", "disk_q4_gb": None, "disk_fp8_gb": None},
+    "mistral": {"params_total_b": 1050, "params_active_b": 52, "params_est": True,
+                "arch": "moe", "disk_q4_gb": 525, "disk_fp8_gb": 1050},
+    "cohere": {"params_total_b": 218, "params_active_b": 25, "params_est": False,
+               "arch": "moe", "disk_q4_gb": 110, "disk_fp8_gb": 436},
+    "nvidia": {"params_total_b": 550, "params_active_b": None, "params_est": False,
+               "arch": "moe", "disk_q4_gb": 275, "disk_fp8_gb": 550},
+    "ssi": {"params_total_b": None, "params_active_b": None, "params_est": False,
+            "arch": "undisclosed", "disk_q4_gb": None, "disk_fp8_gb": None},
+}
+
+# AI harness / tool adoption race: the coding agents developers actually live
+# in. adoption_score blends work-usage share (2026 dev surveys), revenue scale
+# and benchmark leadership of the models each harness serves. Oct 2026 snapshot.
+FRONTIER_HARNESSES = [
+    {"id": "claude-code", "tool": "Claude Code", "vendor": "Anthropic", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "CLI agent", "license": "Proprietary (free tier + Pro/Max/API)", "license_type": "proprietary",
+     "adoption": "39% of devs at work (2026 surveys) — #1 in actual use",
+     "bench": "Tops SWE-bench via Opus 5.5-class models",
+     "adoption_score": 95, "last_milestone": "Terminal agent + IDE hooks (2026)"},
+    {"id": "copilot", "tool": "GitHub Copilot", "vendor": "Microsoft / GitHub", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "Completion + agent mode", "license": "Proprietary (subscription)", "license_type": "proprietary",
+     "adoption": "~29% of devs; largest installed base (JetBrains Jan 2026)",
+     "bench": "Agent mode on frontier GPT/Claude models",
+     "adoption_score": 90, "last_milestone": "Agent mode + mission control (2025–26)"},
+    {"id": "cursor", "tool": "Cursor", "vendor": "Anysphere", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "AI-native IDE", "license": "Proprietary (~$4B ARR)", "license_type": "proprietary",
+     "adoption": "AI-IDE standard-setter; $4B annualized revenue pace",
+     "bench": "Model-agnostic, ships newest frontier models first",
+     "adoption_score": 88, "last_milestone": "Background agents + cloud (2025–26)"},
+    {"id": "codex", "tool": "OpenAI Codex", "vendor": "OpenAI", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "CLI + cloud agents", "license": "Proprietary (ChatGPT/API)", "license_type": "proprietary",
+     "adoption": "Fastest-growing CLI agent on GPT-6-class models",
+     "bench": "SWE tasks at ~1/20th legacy-agent cost",
+     "adoption_score": 82, "last_milestone": "Codex CLI + cloud fleet (2025–26)"},
+    {"id": "windsurf", "tool": "Windsurf", "vendor": "Cognition", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "AI IDE + agents", "license": "Proprietary", "license_type": "proprietary",
+     "adoption": "Strong pro-team footprint post-Cognition deal",
+     "bench": "Cascade agents on frontier models",
+     "adoption_score": 72, "last_milestone": "Cognition acquisition, agent push (2025)"},
+    {"id": "cline", "tool": "Cline", "vendor": "Community open-source", "country": "Global", "flag": "🌍",
+     "harness_type": "IDE extension", "license": "Open — Apache-2.0", "license_type": "open-weights",
+     "adoption": "Top open agent extension; bring-your-own-key to any frontier model",
+     "bench": "Community evals track closed tools within points",
+     "adoption_score": 70, "last_milestone": "Multi-model marketplace (2025–26)"},
+    {"id": "devin", "tool": "Devin", "vendor": "Cognition", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "Autonomous cloud agent", "license": "Proprietary (seat/API)", "license_type": "proprietary",
+     "adoption": "Enterprise autonomous-SWE pioneer; premium pricing",
+     "bench": "End-to-end repo tasks, async fleet",
+     "adoption_score": 66, "last_milestone": "Enterprise fleet + Windsurf synergy (2025–26)"},
+    {"id": "gemini-assist", "tool": "Gemini Code Assist", "vendor": "Google", "country": "USA", "flag": "🇺🇸",
+     "harness_type": "IDE + cloud", "license": "Proprietary (free tier)", "license_type": "proprietary",
+     "adoption": "Wide free-tier reach via 1M-token context window",
+     "bench": "Gemini 4 long-context refactors",
+     "adoption_score": 64, "last_milestone": "Free tier + 1M context (2025–26)"},
+    {"id": "aider", "tool": "Aider", "vendor": "Community open-source", "country": "Global", "flag": "🌍",
+     "harness_type": "CLI pair-programmer", "license": "Open — Apache-2.0", "license_type": "open-weights",
+     "adoption": "Terminal purists' pick; git-native edit loop",
+     "bench": "Polyglot benchmark stalwart on open models",
+     "adoption_score": 60, "last_milestone": "Voice + image input (2025–26)"},
+    {"id": "lingma", "tool": "Tongyi Lingma", "vendor": "Alibaba", "country": "China", "flag": "🇨🇳",
+     "harness_type": "IDE plugin", "license": "Proprietary (free)", "license_type": "proprietary",
+     "adoption": "Dominant in CN dev workflows on Qwen models",
+     "bench": "Qwen3-Coder tuned completions",
+     "adoption_score": 58, "last_milestone": "Qwen3-Coder integration (2025–26)"},
+]
+
+# Average-home-use profiles behind the desktop subtab (all on consumer GPUs).
+DESK_PROFILES = [
+    {"id": "regular", "name": "Regular query",
+     "desc": "~1 h active inference/day: drafting, Q&A, short code help."},
+    {"id": "agentic", "name": "Agentic use",
+     "desc": "~4 h/day sustained: coding-agent loops, tool calls, long context."},
+]
+
+# Personal-desktop models: open, <240B params, runnable on a home rig.
+# gpus = typical 24GB-class cards (RTX 3090/4090); capability = editorial 0–100;
+# home_score = capability − 6/extra-GPU − 3 custom-license + 2 tiny-MoE bonus.
+FRONTIER_DESKTOPS = [
+    {"id": "qwen3-32b", "model": "Qwen3-32B", "vendor": "Alibaba Qwen", "country": "China", "flag": "🇨🇳",
+     "params_b": 32, "active_b": None, "arch": "dense",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "disk_q4_gb": 19, "home_gpus": "1× RTX 4090 24GB", "gpus": 1, "min_vram": "20 GB",
+     "capability": 92, "blurb": "The 32B sweet spot: near-70B quality on a single card.",
+     "keys": ["qwen3-32b", "qwen3 32b"]},
+    {"id": "qwen3-30b-a3b", "model": "Qwen3-30B-A3B", "vendor": "Alibaba Qwen", "country": "China", "flag": "🇨🇳",
+     "params_b": 30, "active_b": 3, "arch": "moe",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "disk_q4_gb": 18, "home_gpus": "1× RTX 3090/4090 24GB", "gpus": 1, "min_vram": "20 GB",
+     "capability": 86, "blurb": "MoE efficiency pick: 3B active per token, sips power.",
+     "keys": ["qwen3-30b", "30b-a3b", "qwen3 30b"]},
+    {"id": "llama33-70b", "model": "Llama 3.3 70B", "vendor": "Meta", "country": "USA", "flag": "🇺🇸",
+     "params_b": 70, "active_b": None, "arch": "dense",
+     "license": "Open weights — Llama Community (custom)", "license_type": "open-weights",
+     "disk_q4_gb": 40, "home_gpus": "2× RTX 4090 24GB", "gpus": 2, "min_vram": "2× 24 GB",
+     "capability": 90, "blurb": "Proven 70B workhorse; needs a 2-GPU rig.",
+     "keys": ["llama 3.3", "llama 70b"]},
+    {"id": "r1-distill-70b", "model": "DeepSeek-R1-Distill-Llama-70B", "vendor": "DeepSeek", "country": "China", "flag": "🇨🇳",
+     "params_b": 70, "active_b": None, "arch": "dense",
+     "license": "Open weights — MIT", "license_type": "open-weights",
+     "disk_q4_gb": 40, "home_gpus": "2× RTX 4090 24GB", "gpus": 2, "min_vram": "2× 24 GB",
+     "capability": 87, "blurb": "Open reasoning traces at home; thinks before it speaks.",
+     "keys": ["r1-distill", "r1 distill", "deepseek-r1"]},
+    {"id": "scout-109b", "model": "Llama 4 Scout", "vendor": "Meta", "country": "USA", "flag": "🇺🇸",
+     "params_b": 109, "active_b": 17, "arch": "moe",
+     "license": "Open weights — Llama Community (custom)", "license_type": "open-weights",
+     "disk_q4_gb": 60, "home_gpus": "2× RTX 5090 32GB (or 3× 4090)", "gpus": 2, "min_vram": "~64 GB",
+     "capability": 88, "blurb": "Biggest home MoE: 109B knowledge, 17B active burn.",
+     "keys": ["llama 4 scout", "llama scout"]},
+    {"id": "devstral-24b", "model": "Devstral Small 24B", "vendor": "Mistral AI", "country": "France", "flag": "🇫🇷",
+     "params_b": 24, "active_b": None, "arch": "dense",
+     "license": "Open weights — MNPL", "license_type": "open-weights",
+     "disk_q4_gb": 14, "home_gpus": "1× RTX 4090 (fits 16 GB cards too)", "gpus": 1, "min_vram": "16 GB",
+     "capability": 84, "blurb": "Agentic-coding tuned; the home code-agent pick.",
+     "keys": ["devstral"]},
+    {"id": "glm-32b", "model": "GLM-Z1-32B", "vendor": "Zhipu AI", "country": "China", "flag": "🇨🇳",
+     "params_b": 32, "active_b": None, "arch": "dense",
+     "license": "Open weights — MIT", "license_type": "open-weights",
+     "disk_q4_gb": 19, "home_gpus": "1× RTX 4090 24GB", "gpus": 1, "min_vram": "20 GB",
+     "capability": 82, "blurb": "Bilingual reasoning 32B; MIT-licensed and tidy.",
+     "keys": ["glm-z1", "glm-4-32b", "glm 32b"]},
+    {"id": "gemma3-27b", "model": "Gemma 3 27B", "vendor": "Google", "country": "USA", "flag": "🇺🇸",
+     "params_b": 27, "active_b": None, "arch": "dense",
+     "license": "Open weights — Gemma (custom, free)", "license_type": "hybrid",
+     "disk_q4_gb": 16, "home_gpus": "1× RTX 4090 24GB", "gpus": 1, "min_vram": "18 GB",
+     "capability": 82, "blurb": "Multimodal 27B; polite, compact, single-card.",
+     "keys": ["gemma 3", "gemma3"]},
+    {"id": "mistral-small-24b", "model": "Mistral Small 3.1 24B", "vendor": "Mistral AI", "country": "France", "flag": "🇫🇷",
+     "params_b": 24, "active_b": None, "arch": "dense",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "disk_q4_gb": 14, "home_gpus": "1× RTX 4090 (fits 16 GB cards too)", "gpus": 1, "min_vram": "16 GB",
+     "capability": 80, "blurb": "Vision-capable 24B; Apache-2.0, no strings.",
+     "keys": ["mistral small", "small 3.1"]},
+    {"id": "phi4-14b", "model": "Phi-4 14B", "vendor": "Microsoft", "country": "USA", "flag": "🇺🇸",
+     "params_b": 14, "active_b": None, "arch": "dense",
+     "license": "Open weights — MIT", "license_type": "open-weights",
+     "disk_q4_gb": 9, "home_gpus": "1× RTX 3090 (even 12 GB cards)", "gpus": 1, "min_vram": "12 GB",
+     "capability": 78, "blurb": "Smallest serious desk model; runs almost anywhere.",
+     "keys": ["phi-4", "phi 4"]},
+    {"id": "qwen38-27b", "model": "Qwen3.8-27B", "vendor": "Alibaba Qwen", "country": "China", "flag": "🇨🇳",
+     "params_b": 27, "active_b": None, "arch": "dense",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "disk_q4_gb": 15, "home_gpus": "1× RTX 4090 (fits 16GB cards too)", "gpus": 1, "min_vram": "16 GB",
+     "capability": 93, "blurb": "Aug-2026 open drop: agentic dense VLM, 262K ctx, single-GPU flagship.",
+     "keys": ["qwen3.8-27b", "qwen3.8 27b", "qwen 3.8 27b"]},
+    {"id": "glimmer-30b", "model": "Muse Glimmer 30B", "vendor": "Meta", "country": "USA", "flag": "🇺🇸",
+     "params_b": 30, "active_b": None, "arch": "dense",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "disk_q4_gb": 17, "home_gpus": "1× RTX 3090/4090 24GB", "gpus": 1, "min_vram": "20 GB",
+     "capability": 85, "blurb": "Meta's always-on local-agent 30B; most permissive Meta license yet.",
+     "keys": ["muse glimmer", "glimmer 30b"]},
+    {"id": "nano-30b", "model": "Nemotron 3 Nano 30B", "vendor": "NVIDIA", "country": "USA", "flag": "🇺🇸",
+     "params_b": 30, "active_b": None, "arch": "hybrid",
+     "license": "Open — NVIDIA Open Model License", "license_type": "open-weights",
+     "disk_q4_gb": 17, "home_gpus": "1× RTX 3090/4090 24GB", "gpus": 1, "min_vram": "20 GB",
+     "capability": 83, "blurb": "Hybrid-reasoning 30B built for long-running agents.",
+     "keys": ["nemotron 3 nano", "nemotron nano"]},
+    {"id": "mixtral-8x22b", "model": "Mixtral 8x22B", "vendor": "Mistral AI", "country": "France", "flag": "🇫🇷",     "params_b": 141, "active_b": 39, "arch": "moe",
+     "license": "Open weights — Apache-2.0", "license_type": "open-weights",
+     "disk_q4_gb": 75, "home_gpus": "3× RTX 4090 (rich-home rig)", "gpus": 3, "min_vram": "3× 24 GB",
+     "capability": 84, "blurb": "Veteran big MoE; quality costs a third card.",
+     "keys": ["mixtral", "8x22b"]},
+]
+
+
+def _desk_use(gpus: int) -> dict:
+    """Home power/cost for the two average-use profiles.
+
+    Active draw ≈ 320W per 24GB card under inference + 150W host; regular =
+    1 h/day active, agentic = 4 h/day. Power at $0.15/kWh.
+    """
+    draw = round(gpus * 0.32 + 0.15, 2)
+    out = {}
+    for pid, hours in (("regular", 1), ("agentic", 4)):
+        kwh_day = round(draw * hours, 2)
+        kwh_mo = round(kwh_day * 30, 1)
+        out[pid] = {"draw_kw": draw, "kwh_day": kwh_day, "kwh_mo": kwh_mo,
+                    "cost_mo": round(kwh_mo * 0.15, 2)}
+    return out
+
+
+def _desk_score(m: dict) -> float:
+    s = m["capability"] - (m["gpus"] - 1) * 6
+    if m["license_type"] not in ("open-weights",):
+        s -= 3
+    elif "custom" in m["license"].lower() or "gemma" in m["license"].lower() or "mnpl" in m["license"].lower():
+        s -= 3
+    if m["arch"] == "moe" and m["params_b"] <= 35:
+        s += 2
+    return round(s, 1)
+
+
+def _kw(n_h100: int) -> str:
+    import math as _m
+    nodes = max(1, _m.ceil(n_h100 / 8))
+    w = n_h100 * 700 + nodes * 500
+    return f"~{w / 1000:.1f} kW draw · ~{w * 24 / 1000:.0f} kWh/day"
+
+
+def _frontier_run_tasks(lab_id: str, tier: str) -> list:
+    """Per-task GPU + VRAM + power rows for one lab (estimates, see method)."""
+    import math as _m
+    if tier not in ("workstation", "datacenter") or lab_id not in RUN_ANCHORS:
+        rep = f"{API_REPLICA_H100}× H100"
+        return [
+            {"id": "chat", "task": "Chat · 8k ctx",
+             "gpus": "Shared shard (≈1/20 replica, provider-side)", "vram": "provider-side",
+             "power": "~0.3 kW per active user",
+             "note": "You pay per token; provider amortizes one replica over many users."},
+            {"id": "agent", "task": "Agentic coding · 32k + tools",
+             "gpus": f"1 dedicated replica ({rep})", "vram": "provider-side",
+             "power": _kw(API_REPLICA_H100),
+             "note": "Long reasoning traces pin a full replica per active agent."},
+            {"id": "longctx", "task": "Long-context · 128k RAG",
+             "gpus": f"2 replicas (16× H100)", "vram": "provider-side",
+             "power": _kw(16),
+             "note": "KV cache for 128k+ context spills across a second replica."},
+            {"id": "serve", "task": "Serving · 64 concurrent",
+             "gpus": "8 replicas (64× H100)", "vram": "provider-side",
+             "power": _kw(64),
+             "note": "Fleet behind a router; autoscaled, not yours to power."},
+        ]
+    a = RUN_ANCHORS[lab_id]
+    q, f, r4090 = a["q4_h100"], a["fp8_h100"], a["r4090"]
+    agent_n = _m.ceil(q * 1.5)
+    long_n = q * 2
+    serve_n = f * 4
+    return [
+        {"id": "chat", "task": "Chat · 8k ctx",
+         "gpus": f"{q}× H100 80GB Q4 (or ~{r4090}× RTX 4090)",
+         "vram": f"~{a['q4_gb']} GB",
+         "power": _kw(q),
+         "note": "Cheapest local run; single user, quantized."},
+        {"id": "agent", "task": "Agentic coding · 32k + tools",
+         "gpus": f"{agent_n}× H100 80GB Q4",
+         "vram": f"~{int(a['q4_gb'] * 1.3)} GB",
+         "power": _kw(agent_n),
+         "note": "Sustained boost clocks + tool-call KV retention."},
+        {"id": "longctx", "task": "Long-context · 128k RAG",
+         "gpus": f"{long_n}× H100 80GB Q4",
+         "vram": f"~{a['q4_gb'] * 2} GB",
+         "power": _kw(long_n),
+         "note": "KV cache at 128k dominates VRAM — add one GPU headroom."},
+        {"id": "serve", "task": "Serving · 64 concurrent",
+         "gpus": f"{serve_n}× H100 80GB FP8 (4 replicas)",
+         "vram": f"~{a['fp8_gb'] * 4} GB fleet",
+         "power": _kw(serve_n),
+         "note": "Full-precision fleet; router + redundancy included in count."},
+    ]
+
+
+# Live-adoption match terms: counted against artifact title/description/tags on
+# every call, so buzz, momentum and the harness crown move with ingestion.
+FRONTIER_BUZZ_KEYS = {
+    "openai": ["openai", "gpt-6", "gpt-5", "astra", "sam altman", "stargate"],
+    "anthropic": ["anthropic", "claude opus", "claude sonnet", "amodei"],
+    "deepmind": ["deepmind", "gemini 4", "gemini 3", "hassabis", "vertex ai"],
+    "xai": ["xai", "grok 4", "grok-1", "colossus", "elon musk"],
+    "meta": ["llama 4", "llama", "maverick", "muse spark", "muse glimmer", "meta superintelligence", "zuckerberg"],
+    "deepseek": ["deepseek", "deepseek v4", "deepseek-r1", "high-flyer"],
+    "qwen": ["qwen", "qwen3", "qwen3.8", "qwen max", "qwen4", "tongyi"],
+    "moonshot": ["moonshot", "kimi k3", "kimi k2", "kimi"],
+    "zhipu": ["zhipu", "glm-5", "glm-4", "z.ai", "autoglm"],
+    "tencent": ["hunyuan", "hy4", "hy3", "tencent ai"],
+    "baidu": ["ernie", "ernie 5", "qianfan", "baidu ai"],
+    "mistral": ["mistral large", "mistral ai", "le chat", "mnpl"],
+    "cohere": ["cohere", "command a", "command r"],
+    "nvidia": ["nemotron", "nvidia ai", "jensen huang"],
+    "ssi": ["safe superintelligence", "ssi", "sutskever"],
+}
+
+HARNESS_BUZZ_KEYS = {
+    "claude-code": ["claude code"],
+    "copilot": ["github copilot", "copilot"],
+    "cursor": ["cursor ide", "cursor editor", "cursor ai", "anysphere"],
+    "codex": ["codex cli", "openai codex"],
+    "windsurf": ["windsurf"],
+    "cline": ["cline ai", "cline bot", "cline x"],
+    "devin": ["devin ai", "cognition devin"],
+    "gemini-assist": ["code assist", "gemini code"],
+    "aider": ["aider"],
+    "lingma": ["lingma", "tongyi lingma"],
+}
+
+
+def _buzz(artifacts, sentiments: dict, keys: list) -> dict:
+    """Live graph buzz for a lab/harness: mentions, 90-day recency, sentiment."""
+    import time as _t
+    now = _t.time()
+    mentions = 0
+    recent = 0
+    sents = []
+    for a in artifacts:
+        hay = f"{a.title or ''} {a.description or ''} {a.tags or ''}".lower()
+        if not any(k in hay for k in keys):
+            continue
+        mentions += 1
+        if a.id in sentiments:
+            sents.append(sentiments[a.id])
+        base = a.date_published or a.created_at
+        if base:
+            try:
+                ts = base.timestamp() if hasattr(base, "timestamp") else 0
+                if now - ts < 90 * 86400:
+                    recent += 1
+            except Exception:
+                pass
+    avg_sent = round(sum(sents) / len(sents), 2) if sents else 0.0
+    if mentions == 0:
+        momentum = "quiet"
+    elif recent >= 3:
+        momentum = "rising"
+    elif recent >= 1:
+        momentum = "active"
+    else:
+        momentum = "steady"
+    return {"mentions": mentions, "recent_90d": recent,
+            "sentiment": avg_sent, "momentum": momentum}
+
+
+# Home-rig presets for the desktop configurator. usable_vram ≈ what a model
+# can actually allocate after OS/framework overhead (unified-memory rigs share
+# with the OS; split-VRAM rigs lose a slice to sharding).
+FRONTIER_RIGS = [
+    {"id": "dgx-spark", "name": "1× DGX Spark 128GB",
+     "gpus": "1× GB10 Grace-Blackwell", "vram_total": 128, "usable_vram": 110,
+     "gpu_count": 1, "bw_gbs": 300,
+     "note": "Unified memory — model shares with OS; ~110GB usable. Multi-GPU sharding not needed."},
+    {"id": "2x5080", "name": "2× RTX 5080 (32GB)",
+     "gpus": "2× 16GB", "vram_total": 32, "usable_vram": 30,
+     "gpu_count": 2, "bw_gbs": 960,
+     "note": "Split VRAM — needs a tensor-parallel backend (vLLM/SGLang); single-GPU backends see 16GB only."},
+    {"id": "1x4090", "name": "1× RTX 4090 24GB",
+     "gpus": "1× 24GB", "vram_total": 24, "usable_vram": 22,
+     "gpu_count": 1, "bw_gbs": 1008,
+     "note": "The classic home-lab card."},
+    {"id": "2x4090", "name": "2× RTX 4090 (48GB)",
+     "gpus": "2× 24GB", "vram_total": 48, "usable_vram": 45,
+     "gpu_count": 2, "bw_gbs": 1008,
+     "note": "Split VRAM — tensor-parallel backend; fits most 70B Q4s."},
+    {"id": "mac-128", "name": "Mac Studio 128GB",
+     "gpus": "Apple Silicon unified", "vram_total": 128, "usable_vram": 100,
+     "gpu_count": 1, "bw_gbs": 400,
+     "note": "Unified memory via MLX; huge capacity, slower than CUDA."},
+]
+
+
+# Residential electricity rates behind the desktop energy-cost selector.
+# Representative 2026 all-in residential tariffs (energy + taxes + fees).
+# Users can override with their own rate; costs = kWh × rate, computed live.
+ENERGY_RATES = [
+    {"id": "nl", "country": "Netherlands", "currency": "EUR", "symbol": "€", "per_kwh": 0.28},
+    {"id": "de", "country": "Germany", "currency": "EUR", "symbol": "€", "per_kwh": 0.36},
+    {"id": "fr", "country": "France", "currency": "EUR", "symbol": "€", "per_kwh": 0.24},
+    {"id": "uk", "country": "United Kingdom", "currency": "GBP", "symbol": "£", "per_kwh": 0.26},
+    {"id": "us", "country": "United States", "currency": "USD", "symbol": "$", "per_kwh": 0.18},
+    {"id": "ca", "country": "Canada", "currency": "CAD", "symbol": "C$", "per_kwh": 0.16},
+    {"id": "au", "country": "Australia", "currency": "AUD", "symbol": "A$", "per_kwh": 0.34},
+    {"id": "cn", "country": "China", "currency": "CNY", "symbol": "¥", "per_kwh": 0.55},
+    {"id": "in", "country": "India", "currency": "INR", "symbol": "₹", "per_kwh": 8.0},
+    {"id": "jp", "country": "Japan", "currency": "JPY", "symbol": "¥", "per_kwh": 31.0},
+]
+
+
+@app.get("/api/frontier-race")
+def get_frontier_race(db: Session = Depends(get_db)):
+    """6th-tab payload: frontier labs racing to crown AGI/ASI.
+
+    Static curated race card (org, country, size, model, operational license,
+    GPU needed to run) enriched live with the graph's median AGI forecast so
+    lab targets can be read against community evidence on every call.
+    """
+    now_year = datetime.now(timezone.utc).year
+    projections = db.query(Projection).all()
+    mids = []
+    for p in projections:
+        tf = parse_timeframe(p.timeframe)
+        if not tf:
+            continue
+        if tf[0] < FORECAST_YEAR_MIN or tf[0] > FORECAST_YEAR_MAX:
+            continue
+        mids.append((tf[0] + tf[1]) / 2)
+    mids.sort()
+    graph_median = mids[len(mids) // 2] if mids else None
+
+    agi_mids = sorted(l["agi_mid"] for l in FRONTIER_LABS)
+    asi_mids = sorted(l["asi_mid"] for l in FRONTIER_LABS)
+    artifacts = db.query(Artifact).all()
+    sent_map = {s.artifact_id: s.score for s in db.query(Sentiment).all()}
+    labs = []
+    for l in sorted(FRONTIER_LABS, key=lambda l: -l["crown_score"]):
+        merged = dict(l)
+        merged.update(FRONTIER_RUN_COMPUTE.get(l["id"], {}))
+        merged.update(FRONTIER_MODEL_SPECS.get(l["id"], {}))
+        merged["run_tasks"] = _frontier_run_tasks(l["id"], merged.get("run_tier", "api-only"))
+        merged["buzz"] = _buzz(artifacts, sent_map, FRONTIER_BUZZ_KEYS.get(l["id"], [l["organization"].lower()]))
+        labs.append(merged)
+    # Harness crown is LIVE: base adoption blended with 90-day graph buzz and
+    # sentiment, re-sorted on every call — Fetch/ingestion moves the crown.
+    harnesses = []
+    for h in FRONTIER_HARNESSES:
+        m = dict(h)
+        b = _buzz(artifacts, sent_map, HARNESS_BUZZ_KEYS.get(h["id"], [h["tool"].lower()]))
+        m["live_mentions"] = b["mentions"]
+        m["live_recent"] = b["recent_90d"]
+        m["live_sentiment"] = b["sentiment"]
+        m["momentum"] = b["momentum"]
+        m["live_adoption"] = round(h["adoption_score"] + min(15, 3 * b["recent_90d"])
+                                   + 5 * max(0, b["sentiment"]), 1)
+        harnesses.append(m)
+    harnesses.sort(key=lambda h: -h["live_adoption"])
+    for rank, h in enumerate(harnesses, start=1):
+        h["rank"] = rank
+    # Desktop subtab (<240B home rigs): scored once on capability-per-hassle,
+    # then nudged live by graph buzz like the harness crown.
+    desktops = []
+    for m in FRONTIER_DESKTOPS:
+        d2 = dict(m)
+        d2["use"] = _desk_use(m["gpus"])
+        d2["home_score"] = _desk_score(m)
+        b = _buzz(artifacts, sent_map, m.get("keys", [m["model"].lower()]))
+        d2["live_mentions"] = b["mentions"]
+        d2["live_recent"] = b["recent_90d"]
+        d2["live_sentiment"] = b["sentiment"]
+        d2["momentum"] = b["momentum"]
+        d2["live_home"] = round(d2["home_score"] + min(8, 2 * b["recent_90d"])
+                                + 3 * max(0, b["sentiment"]), 1)
+        desktops.append(d2)
+    desktops.sort(key=lambda m: -m["live_home"])
+    for rank, m in enumerate(desktops, start=1):
+        m["rank"] = rank
+    for rank, lab in enumerate(labs, start=1):
+        lab["rank"] = rank
+    open_n = sum(1 for l in FRONTIER_LABS if l["license_type"] in ("open-weights", "hybrid"))
+    local_n = sum(1 for l in labs if l.get("run_tier") in ("workstation", "datacenter"))
+    countries = sorted({l["country"] for l in FRONTIER_LABS})
+    return {
+        "now_year": now_year,
+        "live": True,
+        "labs": labs,
+        "leader": labs[0] if labs else None,
+        "harnesses": harnesses,
+        "harness_leader": harnesses[0] if harnesses else None,
+        "desktops": desktops,
+        "desktop_leader": desktops[0] if desktops else None,
+        "desk_profiles": DESK_PROFILES,
+        "rigs": FRONTIER_RIGS,
+        "energy_rates": ENERGY_RATES,
+        "summary": {
+            "lab_count": len(FRONTIER_LABS),
+            "country_count": len(countries),
+            "countries": countries,
+            "open_count": open_n,
+            "closed_count": len(FRONTIER_LABS) - open_n,
+            "local_run_count": local_n,
+            "api_only_count": len(FRONTIER_LABS) - local_n,
+            "median_lab_agi": agi_mids[len(agi_mids) // 2] if agi_mids else None,
+            "earliest_lab_agi": min(agi_mids) if agi_mids else None,
+            "latest_lab_agi": max(agi_mids) if agi_mids else None,
+            "median_lab_asi": asi_mids[len(asi_mids) // 2] if asi_mids else None,
+            "graph_median_agi": graph_median,
+            "graph_forecast_count": len(mids),
+            "harness_count": len(harnesses),
+            "harness_types": sorted({h["harness_type"] for h in harnesses}),
+            "harness_open_count": sum(1 for h in harnesses if h["license_type"] == "open-weights"),
+        },
+        "timeline": FRONTIER_TIMELINE,
+        "roadmap": FRONTIER_PHASES,
+        "run_task_defs": RUN_TASK_DEFS,
+        "scale": {"min_year": 2017, "max_year": 2040},
+        "freshness": {"total_projections": len(projections),
+                      "last_ingest": ingestion_stats.get("last_run")},
+        "method": ("crown_score blends public benchmark leadership, shipped capability and compute scale "
+                   "(Oct 2026 snapshot — closed-lab sizes are estimates). AGI/ASI mids are each lab's stated "
+                   "or inferred target window midpoint. Run-GPU figures are inference estimates: full-weight "
+                   "FP8/BF16 serving vs cheapest practical Q4 local run (vLLM/SGLang/Ollama); add headroom for "
+                   "long context. Per-task power = GPUs × 700W (H100 SXM TDP) + 500W host per ≤8-GPU node, as "
+                   "24h kWh; API-only rows are provider-side replica estimates, not your electricity bill. "
+                   "LIVE layer: buzz counts artifact mentions per lab/harness with 90-day recency and sentiment; "
+                   "harness live_adoption = base score + up to 15 buzz points + up to 5 sentiment points, "
+                   "re-ranked every call. Desktop home_score = capability − 6/extra-GPU − 3 custom-license "
+                   "+ 2 tiny-MoE bonus, nudged live by buzz (max 8 + 3). Rig fit: Q4 need ≈ disk + 4GB, "
+                   "FP16 need ≈ 2× params + 6GB; ✅ fits usable VRAM, ⚠️ within 20% over (drop to Q3/offload), "
+                   "❌ beyond that. TPS ≈ 0.5 × rig bandwidth ÷ active-weight bytes per token (Q4 decode-bound), "
+                   "shown as a ±30% range — estimates, not benchmarks. Energy costs = kWh × the selected country tariff "
+                   "(representative residential incl. taxes; override with your own). "
+                   "Graph median AGI is recomputed live from projections."),
+        "caveats": ("Closed-lab parameter counts and compute are undisclosed — sizes marked ~ are press/analyst "
+                    "estimates. Run-GPU needs vary with quantization, context length and framework; treat them "
+                    "as planning bands, not vendor specs. Buzz reflects this graph's corpus (curated + ingested), "
+                    "not the whole internet — press Fetch or wait for the daily run to freshen it. Licenses change "
+                    "per release; check the vendor model card before reuse."),
+    }
+
+
 # ---------------------------------------------------------- discoveries ---
 # Attention queue + new arrivals + influential findings. All derived live from
 # the graph so the Discoveries landing view stays fresh as ingestion runs.
