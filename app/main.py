@@ -3,7 +3,7 @@ import re
 import atexit
 import threading
 from collections import defaultdict
-from datetime import datetime, timezone, datetime as dt
+from datetime import datetime, timezone, timedelta, datetime as dt
 from typing import Optional
 
 import logging
@@ -1534,10 +1534,115 @@ def get_discoveries(db: Session = Depends(get_db)):
             return 10 ** 12
 
     week_new = sum(1 for a in artifacts if _age_seconds(a) < 7 * 86400)
+
+    # --- Analytics & storytelling -----------------------------------------
+    def _pub_dt(a: Artifact):
+        base = a.date_published or a.created_at
+        if not base:
+            return None
+        try:
+            return base if base.tzinfo else base.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+
+    pub_dts = [d for d in (_pub_dt(a) for a in artifacts) if d]
+
+    # Pulse: weekly ingestion counts over the last 12 weeks (+ previous 4 for deltas)
+    weeks = []
+    for k in range(15, -1, -1):
+        w_end = now - timedelta(days=7 * k)
+        w_start = w_end - timedelta(days=7)
+        c = sum(1 for a in artifacts
+                if a.created_at and w_start <= (a.created_at if a.created_at.tzinfo
+                                                else a.created_at.replace(tzinfo=timezone.utc)) < w_end)
+        weeks.append({"week_start": w_start.strftime("%Y-%m-%d"), "label": w_start.strftime("%b %d"),
+                      "count": c})
+    recent4 = sum(w["count"] for w in weeks[-4:])
+    prior4 = sum(w["count"] for w in weeks[-8:-4])
+    delta_pct = round((recent4 - prior4) / prior4 * 100) if prior4 else (100 if recent4 else 0)
+
+    # Outlook mix across all projections
+    type_counts: dict[str, int] = {}
+    for p in projections:
+        type_counts[p.projection_type] = type_counts.get(p.projection_type, 0) + 1
+
+    # Weighted discourse mood (-1..+1)
+    scores = [s.score for s in db.query(Sentiment).all() if s.score is not None]
+    mean_sent = round(sum(scores) / len(scores), 3) if scores else 0.0
+
+    # Topic clusters from tags of recent (<=365d) artifacts
+    tag_recs: dict[str, list] = {}
+    for a in artifacts:
+        age = age_days(a)
+        if age > 365:
+            continue
+        for t in re.split(r"[,;]\s*|\s+", (a.tags or "").lower()):
+            t = t.strip(" .\"'")
+            if len(t) < 3 or t in ("the", "and", "with", "from", "new"):
+                continue
+            e = tag_recs.setdefault(t, [0, 0.0, 0.0])
+            e[0] += 1
+            e[1] += age
+            e[2] += abs(sent_map.get(a.id, 0) or 0)
+    topics = sorted(
+        [{"topic": t, "count": v[0], "avg_age_days": round(v[1] / v[0]),
+          "heat": round(v[0] * (1 + v[2] / v[0])),
+          "trend": "new" if v[1] / v[0] < 60 else ("rising" if v[1] / v[0] < 180 else "steady")}
+         for t, v in tag_recs.items() if v[0] >= 2],
+        key=lambda x: -x["heat"])[:10]
+
+    # Velocity: monthly publication volume over last 12 months
+    vel_months = []
+    for k in range(11, -1, -1):
+        m_end = now - timedelta(days=30 * k)
+        m_start = now - timedelta(days=30 * (k + 1))
+        c = sum(1 for d in pub_dts if m_start <= d < m_end)
+        vel_months.append({"month": m_end.strftime("%b"), "label": m_end.strftime("%b %y"), "count": c})
+
+    # --- Narrative generator: one coherent paragraph about what changed ----
+    total = len(artifacts)
+    parts = [f"The archive now holds {total} artifact" + ("" if total == 1 else "s") +
+             f" · {len(projections)} outlooks · {sum(degree.values()) // 2 if degree else 0} links."]
+    if recent4:
+        cmp_txt = (f"a {abs(delta_pct)}% " + ("acceleration" if delta_pct >= 0 else "slowdown")
+                   + " vs the previous month") if prior4 else "as ingestion ramps up"
+        parts.append(f"{recent4} arrived in the last 4 weeks ({cmp_txt}).")
+    top_t = topics[0] if topics else None
+    if top_t:
+        parts.append(f"'{top_t['topic']}' is the hottest thread — {top_t['count']} recent items, {top_t['trend']}.")
+    if attention:
+        lead = attention[0]
+        la = lead["artifact"]
+        parts.append(f"Top of the watchlist: “{_clean_text(la['title'], 60)}” — "
+                     f"{', '.join(lead['reasons'][:2])}"
+                     + (f", horizon {lead['timeframe']}" if lead.get("timeframe") else "") + ".")
+    if scores:
+        tone = "alarmed" if mean_sent < -0.3 else ("cautious" if mean_sent < -0.05
+               else ("bullish" if mean_sent > 0.2 else "mixed"))
+        parts.append(f"Discourse reads {tone} (mean sentiment {mean_sent:+.2f}).")
+    dyst = type_counts.get("dystopian", 0)
+    utop = type_counts.get("utopian", 0)
+    if dyst or utop:
+        parts.append(f"Outlook mix tilts toward "
+                     + ("risk" if dyst >= utop else "promise")
+                     + f" ({dyst} dystopian vs {utop} utopian projections).")
+
     return {"attention": attention, "attention_count": len(attention),
             "new_arrivals": new_arrivals, "new_this_week": week_new,
             "influential": influential,
             "max_degree": max(degree.values()) if degree else 0,
+            "story": " ".join(parts),
+            "pulse": {"weeks": weeks[4:], "recent4": recent4, "prior4": prior4,
+                      "delta_pct": delta_pct},
+            "totals": {"artifacts": total, "projections": len(projections),
+                       "links": sum(degree.values()) // 2 if degree else 0,
+                       "whistleblower": sum(1 for a in artifacts
+                                            if "whistleblower" in (a.tags or "").lower())},
+            "outlook_mix": [{"type": t, "count": c} for t, c in sorted(type_counts.items(),
+                                                                       key=lambda x: -x[1])],
+            "sentiment": {"mean": mean_sent, "n": len(scores)},
+            "topics": topics,
+            "velocity": vel_months,
             "generated_at": now.isoformat()}
 
 
