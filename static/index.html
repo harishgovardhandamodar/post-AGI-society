@@ -354,6 +354,37 @@ html.light .agent-out { background: #f0f2f5; }
 .new-badge { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .5px; color: #fff; background: linear-gradient(90deg, var(--accent), var(--purple), var(--accent)); background-size: 200% 100%; padding: 1px 7px; border-radius: 8px; margin-right: 6px; animation: disc-shimmer 2.5s linear infinite; }
 @keyframes disc-shimmer { to { background-position: 200% 0; } }
 .inf-bar { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; margin-top: 5px; }
+/* Discoveries — storytelling & analytics */
+.disc-story { font-size: 13.5px; line-height: 1.65; color: var(--text1); background: linear-gradient(135deg, rgba(88,166,255,.08), rgba(188,140,255,.08)); border: 1px solid var(--border); border-left: 3px solid var(--purple); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.disc-story .story-tag { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; color: var(--purple); margin-bottom: 6px; }
+.disc-story em { color: var(--text2); font-style: normal; font-size: 11.5px; }
+.pulse-wrap { position: relative; }
+.pulse-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.pulse-delta { font-weight: 800; font-variant-numeric: tabular-nums; }
+.pulse-delta.up { color: var(--green); } .pulse-delta.down { color: var(--red); } .pulse-delta.flat { color: var(--text2); }
+.spark-svg { width: 100%; height: 74px; display: block; }
+.spark-svg .spk-bar { transition: opacity .15s; }
+.spark-svg:hover .spk-bar { opacity: .75; }
+.spark-svg .spk-bar:hover { opacity: 1; stroke: #fff; stroke-width: .5; }
+.disc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .disc-grid2 { grid-template-columns: 1fr; } }
+.topic-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px dashed var(--border); cursor: pointer; border-radius: 6px; }
+.topic-row:hover { background: var(--bg3); }
+.topic-name { flex: 1; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trend-chip { font-size: 9px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; padding: 1px 7px; border-radius: 8px; }
+.trend-new { background: rgba(63,185,80,.15); color: var(--green); }
+.trend-rising { background: rgba(210,153,34,.15); color: var(--orange); }
+.trend-steady { background: rgba(139,148,158,.15); color: var(--text2); }
+.heat-meter { width: 70px; height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; flex-shrink: 0; }
+.heat-fill { height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--purple)); transition: width .8s cubic-bezier(.2,.7,.3,1); }
+.mix-stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg); margin: 8px 0 6px; }
+.mix-seg { height: 100%; transition: width .8s cubic-bezier(.2,.7,.3,1); }
+.mix-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text2); }
+.mood-track { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--red), var(--orange), #8b949e, var(--accent), var(--green)); margin: 22px 0 6px; }
+.mood-pin { position: absolute; top: -20px; transform: translateX(-50%); font-size: 10px; font-weight: 700; white-space: nowrap; text-align: center; }
+.mood-pin::after { content: ''; display: block; width: 2px; height: 16px; background: var(--text1); margin: 1px auto 0; border-radius: 1px; }
+.mood-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--text2); }
+.disc-sec-label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin: 10px 0 4px; scroll-margin-top: 12px; }
 .inf-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--purple)); width: 0; transition: width .9s cubic-bezier(.2,.7,.3,1); }
 @media (prefers-reduced-motion: reduce) {
   .disc-rise, .pulse-dot, .new-badge { animation: none; }
@@ -2299,6 +2330,11 @@ function renderTimeline(d) {
 }
 
 let discoveriesLoaded = false;
+let _discData = null;          // cached payload — filter/search never refetches
+let _discCharts = {};          // Chart.js instances owned by this view
+let _discFilter = 'all';       // all | attention | new | influential | topics
+const DISC_MIX_COLORS = { dystopian: '#f85149', cautionary: '#d29922', uncertain: '#8b949e',
+                          transitional: '#58a6ff', utopian: '#3fb950', hopeful: '#3fb950' };
 
 function discOpen(id) { if (id != null) openArtifactById(id); }
 function discScroll(id) {
@@ -2320,19 +2356,52 @@ function discCountUp(el, target, suffix) {
   })(t0);
 }
 
+function discTopicSearch(topic) {
+  // jump to the graph view pre-filtered by the topic tag (global search box feeds both list + graph)
+  const box = document.getElementById('searchInput');
+  if (box) { box.value = topic; try { filterArtifacts(); } catch (e) {} }
+  try { switchMainView('graph'); } catch (e) {}
+}
+
+function discSetFilter(f) {
+  _discFilter = f;
+  document.querySelectorAll('#discoveriesView .tl-chip[data-f]').forEach(c =>
+    c.classList.toggle('on', c.getAttribute('data-f') === f));
+  ['Attn', 'New', 'Inf', 'Topics'].forEach(sec => {
+    const n = document.getElementById('discSec' + sec);
+    if (n) n.style.display = (f === 'all' || f === sec.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function discPulseSvg(weeks) {
+  if (!weeks || !weeks.length) return '<div style="color:var(--text2);font-size:12px;">No ingestion history yet.</div>';
+  const W = 100, H = 74, n = weeks.length, bw = W / n;
+  const mx = Math.max(1, ...weeks.map(w => w.count));
+  let bars = '', linePts = [];
+  weeks.forEach((w, i) => {
+    const h = Math.max(2, w.count / mx * (H - 10));
+    bars += `<rect class="spk-bar" x="${(i * bw + bw * 0.15).toFixed(2)}" y="${(H - h).toFixed(2)}" width="${(bw * 0.7).toFixed(2)}" height="${h.toFixed(2)}" rx="1.2" fill="${i >= n - 4 ? 'var(--accent)' : 'var(--purple)'}"><title>${secEsc(w.label)} · ${w.count} item${w.count === 1 ? '' : 's'}</title></rect>`;
+    linePts.push(`${(i * bw + bw / 2).toFixed(1)},${(H - Math.max(2, w.count / mx * (H - 10)) - 2).toFixed(1)}`);
+  });
+  return `<svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Weekly ingest volume, last 12 weeks">${bars}<polyline points="${linePts.join(' ')}" fill="none" stroke="var(--text2)" stroke-width="0.8" stroke-dasharray="2 2" opacity="0.55"/></svg>`;
+}
+
 async function loadDiscoveries() {
   const el = document.getElementById('discoveriesView');
   el.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)"><i class="fas fa-spinner fa-spin fa-2x"></i><br/><br/>Scanning for what needs attention…</div>';
   try {
-    const data = await (await fetch(`${API}/discoveries`)).json();
+    const data = await apiFetch(`${API}/discoveries`);
+    _discData = data;
     renderDiscoveries(data);
   } catch (e) {
-    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load discoveries</div>';
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><br/>Failed to load discoveries: ' + secEsc(e && e.message || e) + '</div>';
   }
 }
 
 function renderDiscoveries(d) {
   const el = document.getElementById('discoveriesView');
+  Object.values(_discCharts).forEach(c => { try { c.destroy(); } catch (e) {} });
+  _discCharts = {};
   const attn = (d.attention || []).map((a, i) => {
     const art = a.artifact || {};
     const pct = Math.min(100, Math.round(a.urgency / 12 * 100));
@@ -2351,7 +2420,7 @@ function renderDiscoveries(d) {
     `<div class="attn clickable disc-rise" style="animation-delay:${i * 70}ms;border-left-color:var(--accent);" role="button" tabindex="0" title="Open artifact #${a.id}" onclick="discOpen(${a.id})" onkeydown="discRowKey(event, ${a.id})">
       <div style="flex:1;min-width:0;">
         <div style="font-size:12px;">${a.is_new ? '<span class="new-badge">NEW</span>' : ''}<a class="tl-link">${secEsc(a.title.slice(0, 100))}</a></div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px;"><span class="type-badge badge-${a.artifact_type}">${secEsc(a.artifact_type)}</span> ${secEsc(a.age_label)} · ${a.connections} links</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px;"><span class="type-badge badge-${a.artifact_type}">${secEsc(a.artifact_type)}</span> ${secEsc(a.age_label)} · ${a.connections} links${a.sentiment != null ? ' · mood ' + a.sentiment : ''}</div>
       </div>
     </div>`).join('');
   const mx = Math.max(1, d.max_degree || 1);
@@ -2362,28 +2431,76 @@ function renderDiscoveries(d) {
       <div class="inf-bar"><div class="inf-fill" data-w="${pct}"></div></div>
     </div>`;
   }).join('');
+  const tot = d.totals || {};
+  const pulse = d.pulse || { weeks: [], recent4: 0, prior4: 0, delta_pct: 0 };
+  const dp = pulse.delta_pct || 0;
+  const deltaCls = dp > 0 ? 'up' : (dp < 0 ? 'down' : 'flat');
+  const deltaTxt = `${dp > 0 ? '▲ +' : (dp < 0 ? '▼ ' : '● ')}${dp}% vs prior month`;
+  const topics = (d.topics || []).map((t, i) => {
+    const heatMax = Math.max(1, ...(d.topics || []).map(x => x.heat));
+    return `<div class="topic-row disc-rise" style="animation-delay:${i * 50}ms" title="Search the graph for “${secEsc(t.topic)}”" onclick="discTopicSearch('${secEsc(t.topic).replace(/'/g, '')}')">
+      <span class="trend-chip trend-${secEsc(t.trend)}">${secEsc(t.trend)}</span>
+      <span class="topic-name">${secEsc(t.topic)}</span>
+      <span style="font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;">${t.count}×</span>
+      <div class="heat-meter"><div class="heat-fill" data-w="${Math.round(t.heat / heatMax * 100)}"></div></div>
+    </div>`;
+  }).join('');
+  const mix = d.outlook_mix || [];
+  const mixTotal = Math.max(1, mix.reduce((s, m) => s + m.count, 0));
+  const mixStack = mix.map(m => `<div class="mix-seg" style="width:${(m.count / mixTotal * 100).toFixed(1)}%;background:${DISC_MIX_COLORS[m.type] || '#8b949e'}" title="${secEsc(m.type)}: ${m.count}"></div>`).join('');
+  const mixLegend = mix.map(m => `<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${DISC_MIX_COLORS[m.type] || '#8b949e'};margin-right:4px;"></span>${secEsc(m.type)} · ${m.count}</span>`).join('');
+  const sm = (d.sentiment || {}).mean || 0;
+  const moodPct = ((sm + 1) / 2 * 100).toFixed(1);
+  const moodWord = sm < -0.3 ? 'alarmed' : (sm < -0.05 ? 'cautious' : (sm > 0.2 ? 'bullish' : 'mixed'));
+  const fresh = d.generated_at ? new Date(d.generated_at) : new Date();
   el.innerHTML = `<div class="disc-wrap">
     <div class="tl-card disc-rise"><h3><i class="fas fa-sparkles"></i> Discoveries <button class="btn btn-sm" style="float:right;" onclick="discoveriesLoaded=true;loadDiscoveries();"><i class="fas fa-rotate"></i> Refresh</button></h3>
+      <div class="disc-story"><span class="story-tag"><i class="fas fa-feather-pointed"></i> The story so far</span><br/>${secEsc(d.story || 'Not much on record yet — run an ingestion pass to populate the archive.')}<br/><em>Snapshot computed live at ${secEsc(fresh.toLocaleString())}.</em></div>
       <div class="disc-hero">
         <div class="tl-stat clickable" role="button" tabindex="0" title="Jump to attention queue" onclick="discScroll('discSecAttn')" onkeydown="if(event.key==='Enter')discScroll('discSecAttn')"><div class="v" id="discNAttn">0</div><div class="l">need attention now</div></div>
         <div class="tl-stat clickable" role="button" tabindex="0" title="Jump to latest arrivals" onclick="discScroll('discSecNew')" onkeydown="if(event.key==='Enter')discScroll('discSecNew')"><div class="v" id="discNNew">0</div><div class="l">arrived this week</div></div>
         <div class="tl-stat clickable" role="button" tabindex="0" title="Jump to influential findings" onclick="discScroll('discSecInf')" onkeydown="if(event.key==='Enter')discScroll('discSecInf')"><div class="v" id="discNLinks">0</div><div class="l">most-linked finding</div></div>
+        <div class="tl-stat" title="Artifacts · projections · links · insider warnings"><div class="v" id="discNTot">0</div><div class="l">on record (${tot.projections || 0} outlooks · ${tot.links || 0} links · ${tot.whistleblower || 0} insider)</div></div>
+      </div>
+      <div class="pulse-wrap">
+        <div class="pulse-meta"><span><strong>Ingestion pulse</strong> · weekly volume, last 12 weeks</span><span class="pulse-delta ${deltaCls}">${deltaTxt}</span></div>
+        ${discPulseSvg(pulse.weeks)}
       </div>
     </div>
-    <div class="disc-card disc-rise" id="discSecAttn" style="animation-delay:120ms;"><h3><i class="fas fa-bell"></i> Needs immediate attention (${d.attention_count || 0})</h3>${attn || '<span style="color:var(--text2)">All quiet — no high-urgency risks on record.</span>'}</div>
-    <div class="disc-card disc-rise" style="animation-delay:200ms;"><h3><i class="fas fa-bolt"></i> New &amp; influential discoveries</h3>
-      <h4 id="discSecNew" style="font-size:12px;margin:10px 0 4px;scroll-margin-top:12px;">Latest arrivals</h4>${news}
-      <h4 id="discSecInf" style="font-size:12px;margin:14px 0 4px;scroll-margin-top:12px;">Most influential findings (by graph links)</h4>${inf}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      ${['all', 'attention', 'new', 'influential', 'topics'].map(f => `<span class="tl-chip${f === 'all' ? ' on' : ''}" data-f="${f}" role="button" tabindex="0" onclick="discSetFilter('${f}')" onkeydown="if(event.key==='Enter')discSetFilter('${f}')">${f === 'all' ? 'Everything' : f.charAt(0).toUpperCase() + f.slice(1)}</span>`).join('')}
+    </div>
+    <div class="disc-card disc-rise" id="discSecAttn"><h3><i class="fas fa-bell"></i> Needs immediate attention (${d.attention_count || 0})</h3>${attn || '<span style="color:var(--text2)">All quiet — no high-urgency risks on record.</span>'}</div>
+    <div class="disc-grid2">
+      <div class="disc-card disc-rise" id="discSecTopics" style="animation-delay:160ms;"><h3><i class="fas fa-fire"></i> Topic board <span style="font-weight:400;text-transform:none;">· click to search the graph</span></h3>${topics || '<span style="color:var(--text2)">Tag clusters appear once ≥2 recent artifacts share a tag.</span>'}
+        <h3 style="margin-top:16px;"><i class="fas fa-scale-balanced"></i> Outlook mix &amp; discourse mood</h3>
+        <div class="mix-stack">${mixStack}</div><div class="mix-legend">${mixLegend || '<span style="color:var(--text2)">No projections yet.</span>'}</div>
+        <div class="mood-track"><div class="mood-pin" style="left:${moodPct}%;" title="mean sentiment ${sm}">${secEsc(moodWord)} ${sm >= 0 ? '+' : ''}${Number(sm).toFixed(2)}</div></div>
+        <div class="mood-scale"><span>alarmed −1</span><span>neutral 0</span><span>hopeful +1</span></div>
+        <div style="margin-top:10px;"><canvas id="discVelChart" height="110"></canvas></div>
+      </div>
+      <div>
+        <div class="disc-card disc-rise" id="discSecNew" style="animation-delay:200ms;"><h3><i class="fas fa-bolt"></i> New arrivals</h3>${news || '<span style="color:var(--text2)">Nothing new yet.</span>'}</div>
+        <div class="disc-card disc-rise" id="discSecInf" style="animation-delay:260ms;"><h3><i class="fas fa-diagram-project"></i> Most influential findings <span style="font-weight:400;text-transform:none;">· by graph links</span></h3>${inf || '<span style="color:var(--text2)">No linked findings yet.</span>'}</div>
+      </div>
     </div>
     <div class="tl-fresh">Ranked live · updated with every ingestion run.</div>
   </div>`;
   discCountUp(document.getElementById('discNAttn'), d.attention_count || 0);
   discCountUp(document.getElementById('discNNew'), d.new_this_week || 0);
   discCountUp(document.getElementById('discNLinks'), d.max_degree || 0);
+  discCountUp(document.getElementById('discNTot'), tot.artifacts || 0);
   document.querySelectorAll('#discoveriesView .disc-urg').forEach(x => discCountUp(x, parseFloat(x.getAttribute('data-n')), ''));
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.querySelectorAll('#discoveriesView .urg-fill, #discoveriesView .inf-fill').forEach(b => { b.style.width = b.getAttribute('data-w') + '%'; });
+    document.querySelectorAll('#discoveriesView .urg-fill, #discoveriesView .inf-fill, #discoveriesView .heat-fill').forEach(b => { b.style.width = b.getAttribute('data-w') + '%'; });
   }));
+  const vel = d.velocity || [];
+  if (window.Chart && vel.length && document.getElementById('discVelChart')) {
+    _discCharts.vel = new Chart(document.getElementById('discVelChart'), { type: 'bar',
+      data: { labels: vel.map(v => v.label), datasets: [{ label: 'published per month', data: vel.map(v => v.count), backgroundColor: 'rgba(88,166,255,.55)', borderRadius: 3 }] },
+      options: { plugins: { legend: { display: false }, title: { display: true, text: 'Publication velocity · 12 months', color: 'var(--text2)', font: { size: 10 } } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0, font: { size: 9 } } }, x: { ticks: { font: { size: 8 } } } } } });
+  }
 }
 
 let agentsLoaded = false;
