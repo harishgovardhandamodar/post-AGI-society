@@ -945,6 +945,66 @@ def get_timeline(db: Session = Depends(get_db)):
                      "avg_sentiment": avg_sent,
                      "key_items": [_mini(a) for a in matched[:4]]})
 
+    # --- Progress-per-gap: how much of each bridge has been built recently.
+    # Heuristic live metric: share of a gap's tagged artifacts published in the
+    # last 24 months (activity momentum) blended with evidence-volume coverage
+    # against a soft target. Recomputed on every call as ingestion grows.
+    def _gap_progress(matched: list[Artifact]) -> int:
+        if not matched:
+            return 0
+        recent = [a for a in matched
+                  if a.date_published and a.date_published.year >= now_year - 2]
+        momentum = len(recent) / len(matched)          # 0..1 freshness share
+        coverage = min(1.0, len(matched) / 25.0)       # soft target: 25 items
+        return max(3, min(95, round(100 * (0.55 * coverage + 0.45 * momentum))))
+
+    # --- Chronological master timeline: merge projections + capability signals
+    # + warnings into one dated stream so users can scrub history → today → future.
+    def _dt_key(dt):
+        return dt or datetime.min.replace(tzinfo=timezone.utc)
+
+    chrono: list[dict] = []
+    for p in projections:
+        a = art_map.get(p.artifact_id)
+        tf = parse_timeframe(p.timeframe)
+        if not tf or tf[0] < FORECAST_YEAR_MIN or tf[0] > FORECAST_YEAR_MAX:
+            continue
+        chrono.append({
+            "kind": "projection", "year_mid": (tf[0] + tf[1]) / 2,
+            "start": tf[0], "end": tf[1], "timeframe": p.timeframe,
+            "label": p.projection_type, "confidence": p.confidence,
+            "summary": _clean_text(p.summary, 240),
+            "source_date": _dt_key(a.date_published).isoformat() if a else None,
+            "artifact": _mini(a) if a else None,
+            "sentiment": sentiments.get(p.artifact_id),
+        })
+    for a in artifacts:
+        if _artifact_matches_tags(a.tags, ["whistleblower"]):
+            kind = "warning"
+        elif _artifact_matches_tags(a.tags, CAPABILITY_SIGNAL_TAGS):
+            kind = "signal"
+        else:
+            continue
+        chrono.append({
+            "kind": kind, "year_mid": _dt_key(a.date_published).year or None,
+            "start": None, "end": None, "timeframe": None,
+            "label": a.artifact_type, "confidence": None,
+            "summary": _clean_text(a.description or "", 240),
+            "source_date": _dt_key(a.date_published).isoformat() if a.date_published else None,
+            "artifact": _mini(a),
+            "sentiment": sentiments.get(a.id),
+        })
+    chrono.sort(key=lambda e: (e["year_mid"] is None, e["year_mid"] or 0))
+    for e in chrono:
+        e["past"] = bool(e["year_mid"] and e["year_mid"] <= now_year)
+    chrono = chrono[:400]
+
+    # Enrich each gap with a live progress estimate (see _gap_progress above).
+    for g_out, g_def in zip(gaps, TIMELINE_GAPS):
+        matched_full = [art for art in artifacts
+                        if _artifact_matches_tags(art.tags, g_def["tags"])]
+        g_out["progress"] = _gap_progress(matched_full)
+
     return {
         "now_year": now_year,
         "where_we_are": {
@@ -952,9 +1012,12 @@ def get_timeline(db: Session = Depends(get_db)):
             "median_agi_year": _pct(mids, 50),
             "spread_p25": _pct(mids, 25),
             "spread_p75": _pct(mids, 75),
+            "min_year": mids[0] if mids else None,
+            "max_year": mids[-1] if mids else None,
             "type_distribution": type_counts,
             "by_year": _timeline_histogram(mids),
         },
+        "chrono": chrono,
         "horizon_bands": bands,
         "gaps": gaps,
         "recent_capability_signals": [_mini(a) for a in recent_sigs],
