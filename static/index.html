@@ -441,7 +441,7 @@ td[role="button"]:focus-visible { outline: 2px solid var(--accent); }
 </style>
 </head>
 <body>
-<div class="layout">
+<div class="layout collapsed">
   <div class="header">
     <div class="brand"><div class="brand-mark"><i class="fas fa-brain"></i></div>
       <div><h1>Post-AGI Society</h1><div class="sub">Knowledge graph of the road to AGI</div></div></div>
@@ -597,7 +597,7 @@ https://productresources.collibra.com/docs/collibra/latest/Content/Assets/Lifecy
   </div>
 </div>
 
-<button id="rightPanelToggle" onclick="toggleRightPanel()" class="right-panel-toggle" title="Toggle panel"><i class="fas fa-chevron-right"></i></button>
+<button id="rightPanelToggle" onclick="toggleRightPanel()" class="right-panel-toggle" title="Toggle panel"><i class="fas fa-chevron-left"></i></button>
 
 <!-- Detail overlay -->
 <div class="overlay" id="detailOverlay">
@@ -764,8 +764,18 @@ function toggleRightPanel() {
   const btn = document.getElementById('rightPanelToggle');
   const collapsed = layout.classList.toggle('collapsed');
   btn.innerHTML = collapsed ? '<i class=\"fas fa-chevron-left\"></i>' : '<i class=\"fas fa-chevron-right\"></i>';
+  try { localStorage.setItem('rightPanelCollapsed', collapsed ? '1' : '0'); } catch (e) {}
   if (network) setTimeout(() => network.fit({ animation: true }), 250);
 }
+
+// Right panel starts collapsed (more room for tabs); a stored override wins.
+function applyRightPanel() {
+  let collapsed = true;
+  try { const v = localStorage.getItem('rightPanelCollapsed'); if (v !== null) collapsed = v === '1'; } catch (e) {}
+  document.querySelector('.layout').classList.toggle('collapsed', collapsed);
+  document.getElementById('rightPanelToggle').innerHTML = collapsed ? '<i class="fas fa-chevron-left"></i>' : '<i class="fas fa-chevron-right"></i>';
+}
+applyRightPanel();
 
 function initTabs() {
   document.querySelectorAll('.tab').forEach(tab => {
